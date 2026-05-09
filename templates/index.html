@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markd</title>
+  <meta name="theme-color" content="#6366f1">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Markd">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+
+<header class="app-header">
+  <span class="logo">Markd</span>
+  <a href="/logout" class="logout-btn" title="Sign out">⏏</a>
+</header>
+
+<main class="app-main">
+
+  <!-- Add todo form -->
+  <form id="add-form" class="add-form" autocomplete="off">
+    <input
+      id="new-title"
+      type="text"
+      placeholder="What needs doing?"
+      maxlength="500"
+      required
+      autocomplete="off"
+    >
+    <input id="new-due" type="date" title="Due date (optional)">
+    <button type="submit" aria-label="Add todo">＋</button>
+  </form>
+
+  <!-- Filter tabs -->
+  <nav class="filter-tabs" aria-label="Filter todos">
+    <button class="tab active" data-filter="active">Active</button>
+    <button class="tab" data-filter="all">All</button>
+    <button class="tab" data-filter="done">Done</button>
+  </nav>
+
+  <!-- Todo list -->
+  <ul id="todo-list" class="todo-list" aria-label="Todos"></ul>
+
+  <p id="empty-msg" class="empty-msg" hidden>Nothing here yet.</p>
+
+</main>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/static/sw.js');
+  }
+</script>
+
+</body>
+</html>

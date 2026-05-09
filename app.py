@@ -12,6 +12,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_from_directory,
     session,
     url_for,
 )
@@ -109,6 +110,11 @@ def require_session(f):
 # ---------------------------------------------------------------------------
 # UI routes
 # ---------------------------------------------------------------------------
+
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(app.static_folder, "favicon.ico")
+
 
 @app.route("/login", methods=["GET", "POST"])
 def login():

@@ -1,0 +1,1 @@
+derek ALL=(ALL) NOPASSWD: /usr/bin/systemctl, /usr/sbin/nginx, /usr/bin/tail, /usr/bin/cat, /usr/bin/ls, /usr/bin/sed

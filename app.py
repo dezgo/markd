@@ -21,9 +21,8 @@ from models import Todo
 
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
-    "DATABASE_URL", "sqlite:///markd.db"
-)
+_default_db = "sqlite:////var/www/markd/markd.db"
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", _default_db)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)

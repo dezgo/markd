@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from database import db
 
-RECURRENCE_OPTIONS = {"daily", "weekly", "fortnightly", "monthly", "yearly"}
+RECURRENCE_UNITS = {"days", "weeks", "months", "years"}
 
 
 class Todo(db.Model):
@@ -11,7 +11,8 @@ class Todo(db.Model):
     title = db.Column(db.String(500), nullable=False)
     done = db.Column(db.Boolean, default=False, nullable=False)
     due_date = db.Column(db.Date, nullable=True)
-    recurrence = db.Column(db.String(20), nullable=True)
+    recurrence_interval = db.Column(db.Integer, nullable=True)
+    recurrence_unit = db.Column(db.String(10), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
         db.DateTime,
@@ -26,7 +27,8 @@ class Todo(db.Model):
             "title": self.title,
             "done": self.done,
             "due_date": self.due_date.isoformat() if self.due_date else None,
-            "recurrence": self.recurrence,
+            "recurrence_interval": self.recurrence_interval,
+            "recurrence_unit": self.recurrence_unit,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }

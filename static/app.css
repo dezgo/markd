@@ -166,6 +166,23 @@ body {
 
 .add-form input[type="date"]:focus { border-color: var(--accent); }
 
+.add-form input[type="number"] {
+  width: 4rem;
+  padding: 0.65rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  outline: none;
+  background: var(--surface);
+  color: var(--muted);
+  -moz-appearance: textfield;
+}
+
+.add-form input[type="number"]::-webkit-outer-spin-button,
+.add-form input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+.add-form input[type="number"]:focus { border-color: var(--accent); }
+
 .add-form select {
   padding: 0.65rem 0.4rem;
   border: 1px solid var(--border);
@@ -174,7 +191,7 @@ body {
   outline: none;
   background: var(--surface);
   color: var(--muted);
-  max-width: 120px;
+  max-width: 100px;
 }
 
 .add-form select:focus { border-color: var(--accent); }
@@ -339,8 +356,9 @@ body {
   margin-top: 2rem;
 }
 
-/* ---- Responsive date/recur inputs on small screens ---- */
+/* ---- Responsive: hide date/recur inputs on small screens ---- */
 @media (max-width: 480px) {
   .add-form input[type="date"],
+  .add-form input[type="number"],
   .add-form select { display: none; }
 }

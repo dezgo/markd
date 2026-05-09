@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone, timedelta
 from functools import wraps
 
 from dateutil.relativedelta import relativedelta
+from sqlalchemy import text, inspect as sa_inspect
 
 from flask import (
     Flask,
@@ -19,21 +20,41 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import db
-from models import Todo, RECURRENCE_OPTIONS
+from models import Todo, RECURRENCE_UNITS
 
 
-def next_due_date(base: date, recurrence: str) -> date:
-    if recurrence == "daily":
-        return base + timedelta(days=1)
-    if recurrence == "weekly":
-        return base + timedelta(weeks=1)
-    if recurrence == "fortnightly":
-        return base + timedelta(weeks=2)
-    if recurrence == "monthly":
-        return base + relativedelta(months=1)
-    if recurrence == "yearly":
-        return base + relativedelta(years=1)
+def next_due_date(base: date, interval: int, unit: str) -> date:
+    if unit == "days":
+        return base + timedelta(days=interval)
+    if unit == "weeks":
+        return base + timedelta(weeks=interval)
+    if unit == "months":
+        return base + relativedelta(months=interval)
+    if unit == "years":
+        return base + relativedelta(years=interval)
     return base
+
+
+def parse_recurrence(data: dict):
+    """Return (interval, unit) or (None, None). Validates and returns an error string on failure."""
+    interval = data.get("recurrence_interval")
+    unit = data.get("recurrence_unit") or None
+
+    if interval is None and unit is None:
+        return None, None, None
+
+    try:
+        interval = int(interval)
+        if interval < 1:
+            raise ValueError
+    except (TypeError, ValueError):
+        return None, None, "recurrence_interval must be a positive integer"
+
+    if unit not in RECURRENCE_UNITS:
+        return None, None, f"recurrence_unit must be one of {sorted(RECURRENCE_UNITS)}"
+
+    return interval, unit, None
+
 
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
@@ -45,6 +66,15 @@ db.init_app(app)
 
 with app.app_context():
     db.create_all()
+    # Migrate: add new columns if upgrading from old single-column schema
+    existing = [c["name"] for c in sa_inspect(db.engine).get_columns("todos")]
+    with db.engine.connect() as conn:
+        if "recurrence_interval" not in existing:
+            conn.execute(text("ALTER TABLE todos ADD COLUMN recurrence_interval INTEGER"))
+            conn.commit()
+        if "recurrence_unit" not in existing:
+            conn.execute(text("ALTER TABLE todos ADD COLUMN recurrence_unit VARCHAR(10)"))
+            conn.commit()
 
 UI_PASSWORD = os.environ["UI_PASSWORD"]
 API_KEY = os.environ["API_KEY"]
@@ -129,11 +159,11 @@ def create_todo():
         except ValueError:
             return jsonify({"error": "due_date must be YYYY-MM-DD"}), 400
 
-    recurrence = data.get("recurrence") or None
-    if recurrence and recurrence not in RECURRENCE_OPTIONS:
-        return jsonify({"error": f"recurrence must be one of {sorted(RECURRENCE_OPTIONS)}"}), 400
+    interval, unit, err = parse_recurrence(data)
+    if err:
+        return jsonify({"error": err}), 400
 
-    todo = Todo(title=title, due_date=due_date, recurrence=recurrence)
+    todo = Todo(title=title, due_date=due_date, recurrence_interval=interval, recurrence_unit=unit)
     db.session.add(todo)
     db.session.commit()
     return jsonify(todo.to_dict()), 201
@@ -156,20 +186,22 @@ def update_todo(todo_id):
 
     if "done" in data:
         new_done = bool(data["done"])
-        if new_done and not todo.done and todo.recurrence:
+        if new_done and not todo.done and todo.recurrence_interval and todo.recurrence_unit:
             base = todo.due_date or date.today()
             db.session.add(Todo(
                 title=todo.title,
-                recurrence=todo.recurrence,
-                due_date=next_due_date(base, todo.recurrence),
+                recurrence_interval=todo.recurrence_interval,
+                recurrence_unit=todo.recurrence_unit,
+                due_date=next_due_date(base, todo.recurrence_interval, todo.recurrence_unit),
             ))
         todo.done = new_done
 
-    if "recurrence" in data:
-        recurrence = data["recurrence"] or None
-        if recurrence and recurrence not in RECURRENCE_OPTIONS:
-            return jsonify({"error": f"recurrence must be one of {sorted(RECURRENCE_OPTIONS)}"}), 400
-        todo.recurrence = recurrence
+    if "recurrence_interval" in data or "recurrence_unit" in data:
+        interval, unit, err = parse_recurrence(data)
+        if err:
+            return jsonify({"error": err}), 400
+        todo.recurrence_interval = interval
+        todo.recurrence_unit = unit
 
     if "due_date" in data:
         if data["due_date"] is None:

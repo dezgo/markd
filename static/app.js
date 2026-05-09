@@ -8,7 +8,8 @@ const emptyMsg = document.getElementById('empty-msg');
 const addForm = document.getElementById('add-form');
 const newTitle = document.getElementById('new-title');
 const newDue = document.getElementById('new-due');
-const newRecur = document.getElementById('new-recur');
+const newRecurInterval = document.getElementById('new-recur-interval');
+const newRecurUnit = document.getElementById('new-recur-unit');
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -57,8 +58,8 @@ function render() {
     const dueHtml = due
       ? `<div class="todo-due${due.overdue ? ' is-overdue' : ''}">${due.overdue ? '⚠ ' : ''}${due.label}</div>`
       : '';
-    const recurHtml = todo.recurrence
-      ? `<span class="todo-recur">↻ ${todo.recurrence}</span>`
+    const recurHtml = todo.recurrence_interval && todo.recurrence_unit
+      ? `<span class="todo-recur">↻ every ${todo.recurrence_interval} ${todo.recurrence_unit}</span>`
       : '';
 
     li.innerHTML = `
@@ -91,7 +92,7 @@ async function toggle(todo) {
   const idx = todos.findIndex(t => t.id === todo.id);
   if (idx !== -1) todos[idx] = updated;
   // Completing a recurring todo spawns a new one server-side — reload the list
-  if (updated.done && updated.recurrence) {
+  if (updated.done && updated.recurrence_interval) {
     todos = await api('/todos');
   }
   render();
@@ -109,7 +110,10 @@ addForm.addEventListener('submit', async e => {
   if (!title) return;
   const payload = { title };
   if (newDue.value) payload.due_date = newDue.value;
-  if (newRecur.value) payload.recurrence = newRecur.value;
+  if (newRecurInterval.value) {
+    payload.recurrence_interval = parseInt(newRecurInterval.value, 10);
+    payload.recurrence_unit = newRecurUnit.value;
+  }
   const created = await api('/todos', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -117,7 +121,7 @@ addForm.addEventListener('submit', async e => {
   todos.unshift(created);
   newTitle.value = '';
   newDue.value = '';
-  newRecur.value = '';
+  newRecurInterval.value = '';
   if (filter === 'done') filter = 'active';
   document.querySelector('.tab.active').classList.remove('active');
   document.querySelector('[data-filter="active"]').classList.add('active');

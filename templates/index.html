@@ -35,13 +35,12 @@
       autocomplete="off"
     >
     <input id="new-due" type="date" title="Due date (optional)">
-    <select id="new-recur" title="Repeat">
-      <option value="">No repeat</option>
-      <option value="daily">Daily</option>
-      <option value="weekly">Weekly</option>
-      <option value="fortnightly">Fortnightly</option>
-      <option value="monthly">Monthly</option>
-      <option value="yearly">Yearly</option>
+    <input id="new-recur-interval" type="number" min="1" max="99" placeholder="every" title="Repeat every N…">
+    <select id="new-recur-unit" title="Repeat unit">
+      <option value="days">days</option>
+      <option value="weeks" selected>weeks</option>
+      <option value="months">months</option>
+      <option value="years">years</option>
     </select>
     <button type="submit" aria-label="Add todo">＋</button>
   </form>

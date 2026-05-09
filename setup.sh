@@ -46,8 +46,15 @@ sudo systemctl enable "$APP"
 sudo systemctl restart "$APP"
 
 # ── Nginx ─────────────────────────────────────────────────────────────────────
-echo "==> Installing Nginx config"
-sudo cp "$DIR/deploy/nginx-$APP.conf" /etc/nginx/sites-available/"$APP"
+# Only copy the config on first install — Certbot modifies it in place for SSL
+# and we don't want to overwrite those changes on every deploy.
+if [ ! -f /etc/nginx/sites-available/"$APP" ]; then
+    echo "==> Installing Nginx config (first install)"
+    sudo cp "$DIR/deploy/nginx-$APP.conf" /etc/nginx/sites-available/"$APP"
+else
+    echo "==> Nginx config already exists — skipping (Certbot owns it)"
+fi
+
 if [ ! -L /etc/nginx/sites-enabled/"$APP" ]; then
     sudo ln -s /etc/nginx/sites-available/"$APP" /etc/nginx/sites-enabled/"$APP"
 fi

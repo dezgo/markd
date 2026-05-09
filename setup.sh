@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP=markd
 DIR=/var/www/markd
-REPO=git@github-personal:dezgo/markd.git
+REPO=git@github.com:dezgo/markd.git
 LOG_DIR=/var/log/markd
 DOMAIN=markd.appfoundry.cc
 
@@ -52,13 +52,8 @@ if [ ! -L /etc/nginx/sites-enabled/"$APP" ]; then
     sudo ln -s /etc/nginx/sites-available/"$APP" /etc/nginx/sites-enabled/"$APP"
 fi
 
-CERT=/etc/letsencrypt/live/$DOMAIN/fullchain.pem
-if [ -f "$CERT" ]; then
-    sudo nginx -t
-    sudo systemctl reload nginx
-else
-    echo "==> Skipping nginx reload — no SSL cert yet (see below)"
-fi
+sudo nginx -t
+sudo systemctl reload nginx
 
 # ── Sudoers ───────────────────────────────────────────────────────────────────
 echo "==> Installing sudoers rules"
@@ -67,13 +62,6 @@ sudo chmod 440 /etc/sudoers.d/derek-ops
 
 echo ""
 echo "Done."
-
-if [ ! -f "$CERT" ]; then
-    echo ""
-    echo "SSL certificate not found. Run to finish:"
-    echo "  sudo certbot --nginx -d $DOMAIN"
-    echo "  sudo systemctl reload nginx"
-fi
 
 if grep -q "change-me" "$DIR/.env" 2>/dev/null; then
     echo ""

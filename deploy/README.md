@@ -18,7 +18,7 @@ EOF
 
 # Or: clone manually then run
 ssh do-personal
-git clone git@github-personal:dezgo/markd.git /var/www/markd
+git clone git@github.com:dezgo/markd.git /var/www/markd
 bash /var/www/markd/setup.sh
 ```
 

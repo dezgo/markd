@@ -356,6 +356,53 @@ body {
   margin-top: 2rem;
 }
 
+/* ---- Undo toast ---- */
+
+.toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #fff;
+  padding: 0.75rem 0.75rem 0.75rem 1.1rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  z-index: 100;
+  white-space: nowrap;
+  animation: toast-in 0.2s ease;
+}
+
+.toast-undo {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.35);
+  color: #fff;
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+
+.toast-undo:hover { background: rgba(255,255,255,0.1); }
+
+.toast-out { animation: toast-out 0.25s ease forwards; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(0.5rem); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(-50%) translateY(0); }
+  to   { opacity: 0; transform: translateX(-50%) translateY(0.5rem); }
+}
+
 /* ---- Responsive: hide date/recur inputs on small screens ---- */
 @media (max-width: 480px) {
   .add-form input[type="date"],

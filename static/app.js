@@ -98,10 +98,49 @@ async function toggle(todo) {
   render();
 }
 
-async function remove(todo) {
-  await api(`/todos/${todo.id}`, { method: 'DELETE' });
+let pendingDelete = null;
+
+function remove(todo) {
+  // Commit any previous pending delete immediately
+  if (pendingDelete) {
+    clearTimeout(pendingDelete.timeoutId);
+    api(`/todos/${pendingDelete.todo.id}`, { method: 'DELETE' }).catch(() => {});
+    dismissToast();
+  }
+
+  // Optimistically remove from UI
   todos = todos.filter(t => t.id !== todo.id);
   render();
+
+  // Show undo toast
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `<span>Task deleted</span><button class="toast-undo">Undo</button>`;
+  document.body.appendChild(toast);
+
+  const timeoutId = setTimeout(() => {
+    api(`/todos/${todo.id}`, { method: 'DELETE' }).catch(() => {});
+    dismissToast();
+  }, 4000);
+
+  pendingDelete = { todo, timeoutId, toastEl: toast };
+
+  toast.querySelector('.toast-undo').addEventListener('click', () => {
+    clearTimeout(pendingDelete.timeoutId);
+    dismissToast();
+    todos = [todo, ...todos];
+    todos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    pendingDelete = null;
+    render();
+  });
+}
+
+function dismissToast() {
+  if (!pendingDelete) return;
+  const el = pendingDelete.toastEl;
+  el.classList.add('toast-out');
+  setTimeout(() => el.remove(), 250);
+  pendingDelete = null;
 }
 
 addForm.addEventListener('submit', async e => {

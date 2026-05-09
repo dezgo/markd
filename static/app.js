@@ -8,6 +8,8 @@ const emptyMsg = document.getElementById('empty-msg');
 const addForm = document.getElementById('add-form');
 const newTitle = document.getElementById('new-title');
 const newDue = document.getElementById('new-due');
+const newDueTime = document.getElementById('new-due-time');
+const newNotes = document.getElementById('new-notes');
 const newRecurInterval = document.getElementById('new-recur-interval');
 const newRecurUnit = document.getElementById('new-recur-unit');
 
@@ -33,15 +35,28 @@ function filtered() {
   return todos;
 }
 
-function formatDue(iso) {
-  if (!iso) return null;
-  const [y, m, d] = iso.split('-').map(Number);
-  const due = new Date(y, m - 1, d);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = Math.round((due - today) / 86400000);
-  const label = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  return { label, overdue: diff < 0 };
+function formatDue(isoDate, timeStr) {
+  if (!isoDate && !timeStr) return null;
+  let label = '';
+  let overdue = false;
+
+  if (isoDate) {
+    const [y, m, d] = isoDate.split('-').map(Number);
+    const due = new Date(y, m - 1, d);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    overdue = due < today;
+    label = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  if (timeStr) {
+    const [h, min] = timeStr.split(':').map(Number);
+    const t = new Date(2000, 0, 1, h, min);
+    const timeLabel = t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    label = label ? `${label} at ${timeLabel}` : timeLabel;
+  }
+
+  return { label, overdue };
 }
 
 function render() {
@@ -54,12 +69,17 @@ function render() {
     li.className = 'todo-item' + (todo.done ? ' is-done' : '');
     li.dataset.id = todo.id;
 
-    const due = formatDue(todo.due_date);
+    const due = formatDue(todo.due_date, todo.due_time);
     const dueHtml = due
       ? `<div class="todo-due${due.overdue ? ' is-overdue' : ''}">${due.overdue ? '⚠ ' : ''}${due.label}</div>`
       : '';
     const recurHtml = todo.recurrence_interval && todo.recurrence_unit
-      ? `<span class="todo-recur">↻ every ${todo.recurrence_interval} ${todo.recurrence_unit}</span>`
+      ? `<span class="todo-recur" title="Tap to edit">↻ every ${todo.recurrence_interval} ${todo.recurrence_unit}</span>`
+      : '';
+
+    const showNotes = todo.notes || !todo.done;
+    const notesHtml = showNotes
+      ? `<div class="todo-notes${todo.notes ? '' : ' is-empty'}">${todo.notes ? escHtml(todo.notes) : 'Add note…'}</div>`
       : '';
 
     li.innerHTML = `
@@ -68,6 +88,7 @@ function render() {
       </button>
       <div class="todo-body">
         <div class="todo-title" title="Tap to edit">${escHtml(todo.title)}</div>
+        ${notesHtml}
         <div class="todo-meta">${dueHtml}${recurHtml}</div>
       </div>
       <button class="todo-delete" aria-label="Delete todo">✕</button>
@@ -76,6 +97,12 @@ function render() {
     li.querySelector('.todo-check').addEventListener('click', () => toggleDone(todo));
     li.querySelector('.todo-delete').addEventListener('click', () => remove(todo));
     li.querySelector('.todo-title').addEventListener('click', () => startEdit(li, todo));
+
+    const notesEl = li.querySelector('.todo-notes');
+    if (notesEl && !todo.done) notesEl.addEventListener('click', () => startNotesEdit(li, todo));
+
+    const recurEl = li.querySelector('.todo-recur');
+    if (recurEl) recurEl.addEventListener('click', () => startRecurEdit(li, todo));
 
     list.appendChild(li);
   }
@@ -86,13 +113,13 @@ function escHtml(s) {
 }
 
 // ---------------------------------------------------------------------------
-// Inline edit
+// Inline edit — title
 // ---------------------------------------------------------------------------
 
 function startEdit(li, todo) {
   if (todo.done) return;
   const titleEl = li.querySelector('.todo-title');
-  if (li.querySelector('.todo-edit-input')) return; // already editing
+  if (li.querySelector('.todo-edit-input')) return;
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -109,10 +136,7 @@ function startEdit(li, todo) {
     if (saved) return;
     saved = true;
     const val = input.value.trim();
-    if (!val || val === todo.title) {
-      cancelEdit();
-      return;
-    }
+    if (!val || val === todo.title) { cancelEdit(); return; }
     const updated = await api(`/todos/${todo.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ title: val }),
@@ -138,6 +162,132 @@ function startEdit(li, todo) {
     if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
   });
   input.addEventListener('blur', save);
+}
+
+// ---------------------------------------------------------------------------
+// Inline edit — notes
+// ---------------------------------------------------------------------------
+
+function startNotesEdit(li, todo) {
+  const notesEl = li.querySelector('.todo-notes');
+  if (!notesEl || li.querySelector('.todo-notes-input')) return;
+
+  const ta = document.createElement('textarea');
+  ta.className = 'todo-notes-input';
+  ta.value = todo.notes || '';
+  ta.placeholder = 'Add a note…';
+  ta.maxLength = 2000;
+  ta.rows = 2;
+  notesEl.replaceWith(ta);
+  ta.focus();
+
+  let saved = false;
+
+  async function save() {
+    if (saved) return;
+    saved = true;
+    const val = ta.value.trim() || null;
+    if (val === (todo.notes || null)) { cancelNotesEdit(); return; }
+    const updated = await api(`/todos/${todo.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ notes: val }),
+    });
+    const idx = todos.findIndex(t => t.id === todo.id);
+    if (idx !== -1) todos[idx] = updated;
+    render();
+  }
+
+  function cancelNotesEdit() {
+    if (saved) return;
+    saved = true;
+    const restored = document.createElement('div');
+    restored.className = 'todo-notes' + (todo.notes ? '' : ' is-empty');
+    restored.textContent = todo.notes || 'Add note…';
+    restored.addEventListener('click', () => startNotesEdit(li, todo));
+    ta.replaceWith(restored);
+  }
+
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); cancelNotesEdit(); }
+    if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); save(); }
+  });
+  ta.addEventListener('blur', save);
+}
+
+// ---------------------------------------------------------------------------
+// Inline edit — recurrence
+// ---------------------------------------------------------------------------
+
+function startRecurEdit(li, todo) {
+  const recurEl = li.querySelector('.todo-recur');
+  if (!recurEl || li.querySelector('.todo-recur-edit')) return;
+
+  const wrap = document.createElement('span');
+  wrap.className = 'todo-recur-edit';
+
+  const numInput = document.createElement('input');
+  numInput.type = 'number';
+  numInput.min = 1;
+  numInput.max = 99;
+  numInput.className = 'recur-edit-num';
+  numInput.value = todo.recurrence_interval || '';
+
+  const unitSel = document.createElement('select');
+  unitSel.className = 'recur-edit-unit';
+  for (const u of ['days', 'weeks', 'months', 'years']) {
+    const opt = document.createElement('option');
+    opt.value = u;
+    opt.textContent = u;
+    if (u === todo.recurrence_unit) opt.selected = true;
+    unitSel.appendChild(opt);
+  }
+
+  wrap.append(numInput, ' ', unitSel);
+  recurEl.replaceWith(wrap);
+  numInput.focus();
+  numInput.select();
+
+  let saved = false;
+
+  async function save() {
+    if (saved) return;
+    saved = true;
+    const interval = parseInt(numInput.value, 10);
+    if (!interval || interval < 1) { cancel(); return; }
+    const updated = await api(`/todos/${todo.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ recurrence_interval: interval, recurrence_unit: unitSel.value }),
+    });
+    const idx = todos.findIndex(t => t.id === todo.id);
+    if (idx !== -1) todos[idx] = updated;
+    render();
+  }
+
+  function cancel() {
+    if (saved) return;
+    saved = true;
+    const badge = document.createElement('span');
+    badge.className = 'todo-recur';
+    badge.title = 'Tap to edit';
+    badge.textContent = `↻ every ${todo.recurrence_interval} ${todo.recurrence_unit}`;
+    badge.addEventListener('click', () => startRecurEdit(li, todo));
+    wrap.replaceWith(badge);
+  }
+
+  function onBlur() {
+    setTimeout(() => { if (!wrap.contains(document.activeElement)) save(); }, 100);
+  }
+
+  numInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+  unitSel.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+  });
+  numInput.addEventListener('blur', onBlur);
+  unitSel.addEventListener('blur', onBlur);
 }
 
 // ---------------------------------------------------------------------------
@@ -182,23 +332,20 @@ function commitToggle() {
 }
 
 function toggleDone(todo) {
-  // Commit any pending toggle before acting
   if (pendingToggle) commitToggle();
 
   if (todo.done) {
-    // Un-completing — do immediately, no toast
+    // Un-completing — do immediately, no toast; backend deletes spawned child
     api(`/todos/${todo.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ done: false }),
     }).then(updated => {
-      const idx = todos.findIndex(t => t.id === todo.id);
-      if (idx !== -1) todos[idx] = updated;
-      render();
-    });
+      // Reload list — backend may have deleted the spawned child
+      return api('/todos').then(all => { todos = all; });
+    }).then(() => render());
     return;
   }
 
-  // Optimistically mark done in UI
   const idx = todos.findIndex(t => t.id === todo.id);
   if (idx !== -1) todos[idx] = { ...todos[idx], done: true };
   render();
@@ -233,10 +380,8 @@ function commitDelete() {
 }
 
 function remove(todo) {
-  // Commit any previous pending delete immediately
   if (pendingDelete) commitDelete();
 
-  // Optimistically remove from UI
   todos = todos.filter(t => t.id !== todo.id);
   render();
 
@@ -264,6 +409,8 @@ addForm.addEventListener('submit', async e => {
   if (!title) return;
   const payload = { title };
   if (newDue.value) payload.due_date = newDue.value;
+  if (newDueTime.value) payload.due_time = newDueTime.value;
+  if (newNotes.value.trim()) payload.notes = newNotes.value.trim();
   if (newRecurInterval.value) {
     payload.recurrence_interval = parseInt(newRecurInterval.value, 10);
     payload.recurrence_unit = newRecurUnit.value;
@@ -275,6 +422,8 @@ addForm.addEventListener('submit', async e => {
   todos.unshift(created);
   newTitle.value = '';
   newDue.value = '';
+  newDueTime.value = '';
+  newNotes.value = '';
   newRecurInterval.value = '';
   if (filter === 'done') filter = 'active';
   document.querySelector('.tab.active').classList.remove('active');

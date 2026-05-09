@@ -136,11 +136,18 @@ body {
 
 .add-form {
   display: flex;
+  flex-direction: column;
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
-.add-form input[type="text"] {
+.add-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.add-row input[type="text"] {
   flex: 1;
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--border);
@@ -151,9 +158,10 @@ body {
   background: var(--surface);
 }
 
-.add-form input[type="text"]:focus { border-color: var(--accent); }
+.add-row input[type="text"]:focus { border-color: var(--accent); }
 
-.add-form input[type="date"] {
+.add-row input[type="date"],
+.add-row input[type="time"] {
   padding: 0.65rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -161,12 +169,15 @@ body {
   outline: none;
   background: var(--surface);
   color: var(--muted);
-  max-width: 150px;
 }
 
-.add-form input[type="date"]:focus { border-color: var(--accent); }
+.add-row input[type="date"] { max-width: 145px; }
+.add-row input[type="time"] { max-width: 110px; }
 
-.add-form input[type="number"] {
+.add-row input[type="date"]:focus,
+.add-row input[type="time"]:focus { border-color: var(--accent); }
+
+.add-row input[type="number"] {
   width: 4rem;
   padding: 0.65rem 0.4rem;
   border: 1px solid var(--border);
@@ -178,12 +189,12 @@ body {
   -moz-appearance: textfield;
 }
 
-.add-form input[type="number"]::-webkit-outer-spin-button,
-.add-form input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+.add-row input[type="number"]::-webkit-outer-spin-button,
+.add-row input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 
-.add-form input[type="number"]:focus { border-color: var(--accent); }
+.add-row input[type="number"]:focus { border-color: var(--accent); }
 
-.add-form select {
+.add-row select {
   padding: 0.65rem 0.4rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -194,9 +205,9 @@ body {
   max-width: 100px;
 }
 
-.add-form select:focus { border-color: var(--accent); }
+.add-row select:focus { border-color: var(--accent); }
 
-.add-form button {
+.add-row button {
   padding: 0 1rem;
   background: var(--accent);
   color: #fff;
@@ -209,7 +220,22 @@ body {
   flex-shrink: 0;
 }
 
-.add-form button:hover { background: var(--accent-dark); }
+.add-row button:hover { background: var(--accent-dark); }
+
+#new-notes {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-family: var(--font);
+  outline: none;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 0.15s;
+}
+
+#new-notes:focus { border-color: var(--accent); }
 
 /* ---- Filter tabs ---- */
 
@@ -339,6 +365,35 @@ body {
 
 .todo-due.is-overdue { color: var(--danger); font-weight: 600; }
 
+.todo-notes {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: 0.2rem;
+  line-height: 1.4;
+  cursor: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.todo-notes.is-empty { color: var(--border); font-style: italic; }
+.todo-item.is-done .todo-notes { cursor: default; }
+
+.todo-notes-input {
+  display: block;
+  width: 100%;
+  font-size: 0.82rem;
+  font-family: var(--font);
+  color: var(--text);
+  border: none;
+  border-bottom: 2px solid var(--accent);
+  outline: none;
+  background: transparent;
+  padding: 0.1rem 0;
+  line-height: 1.4;
+  resize: none;
+  margin-top: 0.2rem;
+}
+
 .todo-recur {
   font-size: 0.72rem;
   color: var(--accent);
@@ -347,6 +402,31 @@ body {
   padding: 0.1rem 0.4rem;
   font-weight: 500;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.todo-recur:hover { background: #e0e7ff; }
+
+.recur-edit-num {
+  width: 3rem;
+  font-size: 0.75rem;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.recur-edit-num::-webkit-outer-spin-button,
+.recur-edit-num::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+.recur-edit-unit {
+  font-size: 0.75rem;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.1rem 0.2rem;
+  outline: none;
+  background: var(--surface);
 }
 
 .todo-delete {
@@ -418,9 +498,10 @@ body {
   to   { opacity: 0; transform: translateX(-50%) translateY(0.5rem); }
 }
 
-/* ---- Responsive: hide date/recur inputs on small screens ---- */
+/* ---- Responsive: hide date/time/recur inputs on small screens ---- */
 @media (max-width: 480px) {
-  .add-form input[type="date"],
-  .add-form input[type="number"],
-  .add-form select { display: none; }
+  .add-row input[type="date"],
+  .add-row input[type="time"],
+  .add-row input[type="number"],
+  .add-row select { display: none; }
 }

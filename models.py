@@ -11,6 +11,9 @@ class Todo(db.Model):
     title = db.Column(db.String(500), nullable=False)
     done = db.Column(db.Boolean, default=False, nullable=False)
     due_date = db.Column(db.Date, nullable=True)
+    due_time = db.Column(db.String(5), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    spawned_from_id = db.Column(db.Integer, nullable=True)
     recurrence_interval = db.Column(db.Integer, nullable=True)
     recurrence_unit = db.Column(db.String(10), nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -27,6 +30,9 @@ class Todo(db.Model):
             "title": self.title,
             "done": self.done,
             "due_date": self.due_date.isoformat() if self.due_date else None,
+            "due_time": self.due_time,
+            "notes": self.notes,
+            "spawned_from_id": self.spawned_from_id,
             "recurrence_interval": self.recurrence_interval,
             "recurrence_unit": self.recurrence_unit,
             "created_at": self.created_at.isoformat(),

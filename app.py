@@ -36,6 +36,14 @@ def next_due_date(base: date, interval: int, unit: str) -> date:
     return base
 
 
+def _valid_time(t: str) -> bool:
+    try:
+        h, m = t.split(":")
+        return 0 <= int(h) <= 23 and 0 <= int(m) <= 59
+    except Exception:
+        return False
+
+
 def parse_recurrence(data: dict):
     """Return (interval, unit) or (None, None). Validates and returns an error string on failure."""
     interval = data.get("recurrence_interval")
@@ -69,13 +77,18 @@ with app.app_context():
     db.create_all()
     # Migrate: add new columns if upgrading from old single-column schema
     existing = [c["name"] for c in sa_inspect(db.engine).get_columns("todos")]
+    new_cols = {
+        "recurrence_interval": "INTEGER",
+        "recurrence_unit":     "VARCHAR(10)",
+        "due_time":            "VARCHAR(5)",
+        "notes":               "TEXT",
+        "spawned_from_id":     "INTEGER",
+    }
     with db.engine.connect() as conn:
-        if "recurrence_interval" not in existing:
-            conn.execute(text("ALTER TABLE todos ADD COLUMN recurrence_interval INTEGER"))
-            conn.commit()
-        if "recurrence_unit" not in existing:
-            conn.execute(text("ALTER TABLE todos ADD COLUMN recurrence_unit VARCHAR(10)"))
-            conn.commit()
+        for col, coltype in new_cols.items():
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE todos ADD COLUMN {col} {coltype}"))
+                conn.commit()
 
 UI_PASSWORD = os.environ["UI_PASSWORD"]
 API_KEY = os.environ["API_KEY"]
@@ -165,11 +178,20 @@ def create_todo():
         except ValueError:
             return jsonify({"error": "due_date must be YYYY-MM-DD"}), 400
 
+    due_time = data.get("due_time") or None
+    if due_time and not _valid_time(due_time):
+        return jsonify({"error": "due_time must be HH:MM"}), 400
+
+    notes = data.get("notes") or None
+
     interval, unit, err = parse_recurrence(data)
     if err:
         return jsonify({"error": err}), 400
 
-    todo = Todo(title=title, due_date=due_date, recurrence_interval=interval, recurrence_unit=unit)
+    todo = Todo(
+        title=title, due_date=due_date, due_time=due_time,
+        notes=notes, recurrence_interval=interval, recurrence_unit=unit,
+    )
     db.session.add(todo)
     db.session.commit()
     return jsonify(todo.to_dict()), 201
@@ -193,13 +215,22 @@ def update_todo(todo_id):
     if "done" in data:
         new_done = bool(data["done"])
         if new_done and not todo.done and todo.recurrence_interval and todo.recurrence_unit:
+            # Completing a recurring task — spawn the next instance
             base = todo.due_date or date.today()
             db.session.add(Todo(
                 title=todo.title,
+                notes=todo.notes,
+                due_time=todo.due_time,
                 recurrence_interval=todo.recurrence_interval,
                 recurrence_unit=todo.recurrence_unit,
                 due_date=next_due_date(base, todo.recurrence_interval, todo.recurrence_unit),
+                spawned_from_id=todo.id,
             ))
+        elif not new_done and todo.done and todo.recurrence_interval:
+            # Un-completing — delete the spawned child if it hasn't been completed yet
+            child = Todo.query.filter_by(spawned_from_id=todo.id, done=False).first()
+            if child:
+                db.session.delete(child)
         todo.done = new_done
 
     if "recurrence_interval" in data or "recurrence_unit" in data:
@@ -208,6 +239,15 @@ def update_todo(todo_id):
             return jsonify({"error": err}), 400
         todo.recurrence_interval = interval
         todo.recurrence_unit = unit
+
+    if "due_time" in data:
+        due_time = data["due_time"] or None
+        if due_time and not _valid_time(due_time):
+            return jsonify({"error": "due_time must be HH:MM"}), 400
+        todo.due_time = due_time
+
+    if "notes" in data:
+        todo.notes = data["notes"] or None
 
     if "due_date" in data:
         if data["due_date"] is None:

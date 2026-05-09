@@ -67,14 +67,15 @@ function render() {
         <span class="todo-check-inner"></span>
       </button>
       <div class="todo-body">
-        <div class="todo-title">${escHtml(todo.title)}</div>
+        <div class="todo-title" title="Tap to edit">${escHtml(todo.title)}</div>
         <div class="todo-meta">${dueHtml}${recurHtml}</div>
       </div>
       <button class="todo-delete" aria-label="Delete todo">✕</button>
     `;
 
-    li.querySelector('.todo-check').addEventListener('click', () => toggle(todo));
+    li.querySelector('.todo-check').addEventListener('click', () => toggleDone(todo));
     li.querySelector('.todo-delete').addEventListener('click', () => remove(todo));
+    li.querySelector('.todo-title').addEventListener('click', () => startEdit(li, todo));
 
     list.appendChild(li);
   }
@@ -84,50 +85,168 @@ function escHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-async function toggle(todo) {
-  const updated = await api(`/todos/${todo.id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ done: !todo.done }),
-  });
-  const idx = todos.findIndex(t => t.id === todo.id);
-  if (idx !== -1) todos[idx] = updated;
-  // Completing a recurring todo spawns a new one server-side — reload the list
-  if (updated.done && updated.recurrence_interval) {
-    todos = await api('/todos');
+// ---------------------------------------------------------------------------
+// Inline edit
+// ---------------------------------------------------------------------------
+
+function startEdit(li, todo) {
+  if (todo.done) return;
+  const titleEl = li.querySelector('.todo-title');
+  if (li.querySelector('.todo-edit-input')) return; // already editing
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'todo-edit-input';
+  input.value = todo.title;
+  input.maxLength = 500;
+  titleEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let saved = false;
+
+  async function save() {
+    if (saved) return;
+    saved = true;
+    const val = input.value.trim();
+    if (!val || val === todo.title) {
+      cancelEdit();
+      return;
+    }
+    const updated = await api(`/todos/${todo.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title: val }),
+    });
+    const idx = todos.findIndex(t => t.id === todo.id);
+    if (idx !== -1) todos[idx] = updated;
+    render();
   }
-  render();
+
+  function cancelEdit() {
+    if (saved) return;
+    saved = true;
+    const restored = document.createElement('div');
+    restored.className = 'todo-title';
+    restored.title = 'Tap to edit';
+    restored.textContent = todo.title;
+    restored.addEventListener('click', () => startEdit(li, todo));
+    input.replaceWith(restored);
+  }
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+  });
+  input.addEventListener('blur', save);
 }
+
+// ---------------------------------------------------------------------------
+// Toast helper
+// ---------------------------------------------------------------------------
+
+function makeToast(message) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `<span>${message}</span><button class="toast-undo">Undo</button>`;
+  document.body.appendChild(toast);
+  return toast;
+}
+
+function dismissToastEl(toastEl) {
+  toastEl.classList.add('toast-out');
+  setTimeout(() => toastEl.remove(), 250);
+}
+
+// ---------------------------------------------------------------------------
+// Mark done with undo
+// ---------------------------------------------------------------------------
+
+let pendingToggle = null;
+
+function commitToggle() {
+  if (!pendingToggle) return;
+  const { todo, timeoutId, toastEl } = pendingToggle;
+  clearTimeout(timeoutId);
+  dismissToastEl(toastEl);
+  pendingToggle = null;
+  api(`/todos/${todo.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ done: true }),
+  }).then(updated => {
+    const idx = todos.findIndex(t => t.id === todo.id);
+    if (idx !== -1) todos[idx] = updated;
+    if (updated.recurrence_interval) {
+      return api('/todos').then(all => { todos = all; });
+    }
+  }).then(() => render()).catch(() => {});
+}
+
+function toggleDone(todo) {
+  // Commit any pending toggle before acting
+  if (pendingToggle) commitToggle();
+
+  if (todo.done) {
+    // Un-completing — do immediately, no toast
+    api(`/todos/${todo.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ done: false }),
+    }).then(updated => {
+      const idx = todos.findIndex(t => t.id === todo.id);
+      if (idx !== -1) todos[idx] = updated;
+      render();
+    });
+    return;
+  }
+
+  // Optimistically mark done in UI
+  const idx = todos.findIndex(t => t.id === todo.id);
+  if (idx !== -1) todos[idx] = { ...todos[idx], done: true };
+  render();
+
+  const toastEl = makeToast('Task done');
+  const timeoutId = setTimeout(commitToggle, 4000);
+  pendingToggle = { todo, timeoutId, toastEl };
+
+  toastEl.querySelector('.toast-undo').addEventListener('click', () => {
+    clearTimeout(pendingToggle.timeoutId);
+    dismissToastEl(pendingToggle.toastEl);
+    const i = todos.findIndex(t => t.id === todo.id);
+    if (i !== -1) todos[i] = { ...todos[i], done: false };
+    pendingToggle = null;
+    render();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Delete with undo
+// ---------------------------------------------------------------------------
 
 let pendingDelete = null;
 
+function commitDelete() {
+  if (!pendingDelete) return;
+  const { todo, timeoutId, toastEl } = pendingDelete;
+  clearTimeout(timeoutId);
+  dismissToastEl(toastEl);
+  pendingDelete = null;
+  api(`/todos/${todo.id}`, { method: 'DELETE' }).catch(() => {});
+}
+
 function remove(todo) {
   // Commit any previous pending delete immediately
-  if (pendingDelete) {
-    clearTimeout(pendingDelete.timeoutId);
-    api(`/todos/${pendingDelete.todo.id}`, { method: 'DELETE' }).catch(() => {});
-    dismissToast();
-  }
+  if (pendingDelete) commitDelete();
 
   // Optimistically remove from UI
   todos = todos.filter(t => t.id !== todo.id);
   render();
 
-  // Show undo toast
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.innerHTML = `<span>Task deleted</span><button class="toast-undo">Undo</button>`;
-  document.body.appendChild(toast);
+  const toastEl = makeToast('Task deleted');
+  const timeoutId = setTimeout(commitDelete, 4000);
+  pendingDelete = { todo, timeoutId, toastEl };
 
-  const timeoutId = setTimeout(() => {
-    api(`/todos/${todo.id}`, { method: 'DELETE' }).catch(() => {});
-    dismissToast();
-  }, 4000);
-
-  pendingDelete = { todo, timeoutId, toastEl: toast };
-
-  toast.querySelector('.toast-undo').addEventListener('click', () => {
+  toastEl.querySelector('.toast-undo').addEventListener('click', () => {
     clearTimeout(pendingDelete.timeoutId);
-    dismissToast();
+    dismissToastEl(pendingDelete.toastEl);
     todos = [todo, ...todos];
     todos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     pendingDelete = null;
@@ -135,13 +254,9 @@ function remove(todo) {
   });
 }
 
-function dismissToast() {
-  if (!pendingDelete) return;
-  const el = pendingDelete.toastEl;
-  el.classList.add('toast-out');
-  setTimeout(() => el.remove(), 250);
-  pendingDelete = null;
-}
+// ---------------------------------------------------------------------------
+// Add todo
+// ---------------------------------------------------------------------------
 
 addForm.addEventListener('submit', async e => {
   e.preventDefault();

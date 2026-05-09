@@ -317,6 +317,21 @@ body {
   flex-wrap: wrap;
 }
 
+.todo-title { cursor: text; }
+.todo-item.is-done .todo-title { cursor: default; }
+
+.todo-edit-input {
+  width: 100%;
+  font-size: 1rem;
+  font-family: var(--font);
+  border: none;
+  border-bottom: 2px solid var(--accent);
+  outline: none;
+  background: transparent;
+  padding: 0;
+  line-height: 1.4;
+}
+
 .todo-due {
   font-size: 0.78rem;
   color: var(--muted);

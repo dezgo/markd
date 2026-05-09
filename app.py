@@ -1,6 +1,8 @@
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from functools import wraps
+
+from dateutil.relativedelta import relativedelta
 
 from flask import (
     Flask,
@@ -17,7 +19,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import db
-from models import Todo
+from models import Todo, RECURRENCE_OPTIONS
+
+
+def next_due_date(base: date, recurrence: str) -> date:
+    if recurrence == "daily":
+        return base + timedelta(days=1)
+    if recurrence == "weekly":
+        return base + timedelta(weeks=1)
+    if recurrence == "fortnightly":
+        return base + timedelta(weeks=2)
+    if recurrence == "monthly":
+        return base + relativedelta(months=1)
+    if recurrence == "yearly":
+        return base + relativedelta(years=1)
+    return base
 
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
@@ -113,7 +129,11 @@ def create_todo():
         except ValueError:
             return jsonify({"error": "due_date must be YYYY-MM-DD"}), 400
 
-    todo = Todo(title=title, due_date=due_date)
+    recurrence = data.get("recurrence") or None
+    if recurrence and recurrence not in RECURRENCE_OPTIONS:
+        return jsonify({"error": f"recurrence must be one of {sorted(RECURRENCE_OPTIONS)}"}), 400
+
+    todo = Todo(title=title, due_date=due_date, recurrence=recurrence)
     db.session.add(todo)
     db.session.commit()
     return jsonify(todo.to_dict()), 201
@@ -135,7 +155,21 @@ def update_todo(todo_id):
         todo.title = title
 
     if "done" in data:
-        todo.done = bool(data["done"])
+        new_done = bool(data["done"])
+        if new_done and not todo.done and todo.recurrence:
+            base = todo.due_date or date.today()
+            db.session.add(Todo(
+                title=todo.title,
+                recurrence=todo.recurrence,
+                due_date=next_due_date(base, todo.recurrence),
+            ))
+        todo.done = new_done
+
+    if "recurrence" in data:
+        recurrence = data["recurrence"] or None
+        if recurrence and recurrence not in RECURRENCE_OPTIONS:
+            return jsonify({"error": f"recurrence must be one of {sorted(RECURRENCE_OPTIONS)}"}), 400
+        todo.recurrence = recurrence
 
     if "due_date" in data:
         if data["due_date"] is None:

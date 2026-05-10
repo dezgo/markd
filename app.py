@@ -129,6 +129,13 @@ def favicon():
     return send_from_directory(app.static_folder, "favicon.ico")
 
 
+@app.route("/sw.js")
+def service_worker():
+    resp = send_from_directory(app.static_folder, "sw.js")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None

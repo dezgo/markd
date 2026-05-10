@@ -65,19 +65,41 @@ sudo systemctl reload nginx
 # ── VAPID keys ────────────────────────────────────────────────────────────────
 if ! grep -q "^VAPID_PRIVATE_KEY=.\+" "$DIR/.env" 2>/dev/null; then
     echo "==> Generating VAPID keys"
-    VAPID_KEYS=$("$DIR/.venv/bin/python3" - <<'PYEOF'
+    cat > /tmp/_gen_vapid.py << 'PYEOF'
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
 import base64
-key = ec.generate_private_key(ec.SECP256R1())
+
+# Older cryptography versions require the backend argument
+try:
+    from cryptography.hazmat.backends import default_backend
+    key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+except TypeError:
+    key = ec.generate_private_key(ec.SECP256R1())
+
+# Private key: raw 32-byte big-endian scalar
 priv_bytes = key.private_numbers().private_value.to_bytes(32, 'big')
 priv = base64.urlsafe_b64encode(priv_bytes).decode().rstrip('=')
-pub = base64.urlsafe_b64encode(key.public_key().public_bytes(
-    serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
-)).decode().rstrip('=')
+
+# Public key: uncompressed EC point (65 bytes)
+# X962/UncompressedPoint may not exist in older cryptography; fall back to DER
+try:
+    pub_bytes = key.public_key().public_bytes(
+        serialization.Encoding.X962,
+        serialization.PublicFormat.UncompressedPoint
+    )
+except (ValueError, AttributeError):
+    der = key.public_key().public_bytes(
+        serialization.Encoding.DER,
+        serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    pub_bytes = der[-65:]
+
+pub = base64.urlsafe_b64encode(pub_bytes).decode().rstrip('=')
 print(priv, pub)
 PYEOF
-)
+    VAPID_KEYS=$("$DIR/.venv/bin/python3" /tmp/_gen_vapid.py)
+    rm -f /tmp/_gen_vapid.py
     VAPID_PRIV=$(echo "$VAPID_KEYS" | cut -d' ' -f1)
     VAPID_PUB=$(echo "$VAPID_KEYS"  | cut -d' ' -f2)
     sed -i "s|^VAPID_PRIVATE_KEY=.*|VAPID_PRIVATE_KEY=$VAPID_PRIV|" "$DIR/.env"

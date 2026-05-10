@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markd — Diagnostics</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 1rem; max-width: 760px; margin: 0 auto; color: #111827; background: #f9fafb; }
+    h1 { font-size: 1.25rem; margin-bottom: 1rem; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+    td { padding: 0.5rem 0.75rem; border-top: 1px solid #e5e7eb; font-size: 0.9rem; }
+    tr:first-child td { border-top: none; }
+    td:first-child { font-weight: 600; color: #6b7280; width: 14rem; }
+    .ok  { color: #059669; font-weight: 600; }
+    .bad { color: #dc2626; font-weight: 600; }
+    pre { background: #1f2937; color: #f3f4f6; padding: 0.75rem; border-radius: 6px; font-size: 0.78rem; overflow-x: auto; line-height: 1.45; max-height: 420px; }
+    a { color: #6366f1; }
+  </style>
+</head>
+<body>
+  <h1>Markd Diagnostics</h1>
+  <table>
+    <tr>
+      <td>VAPID configured</td>
+      <td class="{{ 'ok' if info.vapid_configured else 'bad' }}">{{ 'yes' if info.vapid_configured else 'NO' }}</td>
+    </tr>
+    <tr>
+      <td>Public key</td>
+      <td><code>{{ info.vapid_public_key_preview }}</code></td>
+    </tr>
+    <tr>
+      <td>Contact</td>
+      <td>{{ info.vapid_contact }}</td>
+    </tr>
+    <tr>
+      <td>Push subscriptions</td>
+      <td>{{ info.subscription_count }}</td>
+    </tr>
+    <tr>
+      <td>Todos (total / active / pending notify)</td>
+      <td>{{ info.todos_total }} / {{ info.todos_active }} / {{ info.todos_pending_notification }}</td>
+    </tr>
+    <tr>
+      <td>Server time</td>
+      <td>{{ info.server_time_utc }}</td>
+    </tr>
+  </table>
+
+  <h2 style="font-size: 1rem; margin: 1.5rem 0 0.5rem;">Last 30 cron lines</h2>
+  <pre>{% for line in info.log_tail %}{{ line }}
+{% endfor %}</pre>
+
+  <p style="margin-top: 1rem;"><a href="/">← back to app</a></p>
+</body>
+</html>

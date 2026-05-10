@@ -290,6 +290,16 @@ VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 VAPID_CONTACT = os.environ.get("VAPID_CONTACT", "mailto:admin@example.com")
 
+if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
+    import sys
+    print(
+        "WARNING: VAPID keys not configured — push notifications disabled. "
+        "Run setup.sh to generate them.",
+        file=sys.stderr, flush=True,
+    )
+
+NOTIFICATIONS_LOG = "/var/log/markd/notifications.log"
+
 
 @app.route("/push/vapid-public-key")
 @require_session
@@ -327,6 +337,43 @@ def push_unsubscribe():
         PushSubscription.query.filter_by(endpoint=endpoint).delete()
         db.session.commit()
     return "", 204
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics
+# ---------------------------------------------------------------------------
+
+@app.route("/diagnostics")
+@require_session
+def diagnostics():
+    log_tail = []
+    try:
+        with open(NOTIFICATIONS_LOG) as f:
+            log_tail = [line.rstrip() for line in f.readlines()[-30:]]
+    except FileNotFoundError:
+        log_tail = ["<log file not found — has the cron run yet?>"]
+    except PermissionError:
+        log_tail = ["<permission denied reading log>"]
+
+    pending = Todo.query.filter(
+        Todo.done == False,
+        Todo.notified_at == None,
+        Todo.due_date != None,
+        Todo.due_time != None,
+    ).count()
+
+    info = {
+        "vapid_configured": bool(VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY),
+        "vapid_public_key_preview": (VAPID_PUBLIC_KEY[:30] + "…") if VAPID_PUBLIC_KEY else "(not set)",
+        "vapid_contact": VAPID_CONTACT,
+        "subscription_count": PushSubscription.query.count(),
+        "todos_total": Todo.query.count(),
+        "todos_active": Todo.query.filter_by(done=False).count(),
+        "todos_pending_notification": pending,
+        "server_time_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "log_tail": log_tail,
+    }
+    return render_template("diagnostics.html", info=info)
 
 
 if __name__ == "__main__":

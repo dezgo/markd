@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v31';
+const VERSION = 'v32';
 
 let todos = [];
 let filter = 'active';
@@ -108,11 +108,10 @@ function compareByDue(a, b) {
 
 function filtered() {
   let result;
-  if (filter === 'active') result = todos.filter(t => !t.done);
-  else if (filter === 'done') result = todos.filter(t => t.done);
-  else result = [...todos];
+  if (filter === 'done') result = todos.filter(t => t.done);
+  else result = todos.filter(t => !t.done);  // active is the default
 
-  if (filter === 'active') {
+  if (filter !== 'done') {
     result = [...result].sort(compareByDue);
   }
   return result;

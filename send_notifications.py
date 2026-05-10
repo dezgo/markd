@@ -12,11 +12,13 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
 VAPID_CONTACT = os.environ.get("VAPID_CONTACT", "mailto:admin@example.com")
+TIMEZONE = os.environ.get("TIMEZONE", "UTC")
 
 if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
     print("VAPID keys not configured — skipping", flush=True)
     sys.exit(0)
 
+from dateutil import tz
 from pywebpush import WebPushException, webpush
 
 from app import app
@@ -28,7 +30,7 @@ NOTIFY_HOUR = 9  # hour to notify for date-only todos
 
 def run():
     with app.app_context():
-        now = datetime.now()
+        now = datetime.now(tz.gettz(TIMEZONE)).replace(tzinfo=None)
 
         candidates = Todo.query.filter(
             Todo.done == False,

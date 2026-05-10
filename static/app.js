@@ -443,30 +443,46 @@ function urlBase64ToUint8Array(b64) {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
+const notifBtn = document.getElementById('notif-btn');
+
 async function setupPush() {
   if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
-  if (Notification.permission === 'denied') return;
 
   let reg;
   try { reg = await navigator.serviceWorker.ready; } catch { return; }
   if (!reg.pushManager) return;
 
-  try {
-    const { publicKey } = await api('/push/vapid-public-key');
-    if (!publicKey) return;
+  let { publicKey } = await api('/push/vapid-public-key').catch(() => ({}));
+  if (!publicKey) return;
 
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) {
-      const perm = await Notification.requestPermission();
-      if (perm !== 'granted') return;
-      sub = await reg.pushManager.subscribe({
+  // If already subscribed, silently re-register with server and hide button
+  const existing = await reg.pushManager.getSubscription().catch(() => null);
+  if (existing && Notification.permission === 'granted') {
+    await api('/push/subscribe', { method: 'POST', body: JSON.stringify(existing.toJSON()) }).catch(() => {});
+    notifBtn.hidden = true;
+    return;
+  }
+
+  if (Notification.permission === 'denied') return;
+
+  // Show the bell button — user must tap it to trigger the permission dialog
+  notifBtn.hidden = false;
+  notifBtn.onclick = async () => {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+    try {
+      const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
+      await api('/push/subscribe', { method: 'POST', body: JSON.stringify(sub.toJSON()) });
+      notifBtn.classList.add('is-on');
+      notifBtn.title = 'Notifications on';
+      notifBtn.onclick = null;
+    } catch (e) {
+      console.error('Push subscribe failed', e);
     }
-
-    await api('/push/subscribe', { method: 'POST', body: JSON.stringify(sub.toJSON()) });
-  } catch { /* permission denied or not supported — silently skip */ }
+  };
 }
 
 document.querySelectorAll('.tab').forEach(btn => {

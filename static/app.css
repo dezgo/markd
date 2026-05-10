@@ -115,6 +115,26 @@ body {
   color: var(--accent);
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.notif-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  transition: background 0.15s;
+  line-height: 1;
+}
+
+.notif-btn:hover { background: var(--border); }
+.notif-btn.is-on { opacity: 0.4; cursor: default; }
+
 .logout-btn {
   color: var(--muted);
   text-decoration: none;

@@ -496,6 +496,49 @@ body.is-editing #submit-btn { font-size: 1.2rem; }
 
 #new-notes:focus { border-color: var(--accent); }
 
+/* ---- Notifications banner ---- */
+
+.notif-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: linear-gradient(135deg, #6366f1, #818cf8);
+  color: white;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  margin-bottom: 0.85rem;
+  box-shadow: 0 6px 18px rgba(99,102,241,0.25);
+}
+
+.notif-banner.is-install {
+  background: linear-gradient(135deg, #4338ca, #6366f1);
+}
+
+.notif-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.notif-banner-text strong { font-size: 0.95rem; font-weight: 600; }
+.notif-banner-text span { opacity: 0.9; }
+
+.notif-banner-cta {
+  background: white;
+  color: var(--accent-dark);
+  border: none;
+  padding: 0.55rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.notif-banner-cta:hover { opacity: 0.85; }
+
 /* ---- Filter tabs ---- */
 
 .filter-tabs {

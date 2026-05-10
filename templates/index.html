@@ -19,10 +19,7 @@
 
 <header class="app-header">
   <span class="logo">Markd</span>
-  <div class="header-actions">
-    <button id="notif-btn" class="notif-btn" title="Enable notifications" hidden>🔔</button>
-    <a href="/logout" class="logout-btn" title="Sign out">⏏</a>
-  </div>
+  <a href="/logout" class="logout-btn" title="Sign out">⏏</a>
 </header>
 
 <main class="app-main">
@@ -63,6 +60,9 @@
     </div>
     <input id="new-notes" type="text" placeholder="Add a note… (optional)" maxlength="2000" autocomplete="off">
   </form>
+
+  <!-- Notifications onboarding banner -->
+  <div id="notif-banner" class="notif-banner" hidden></div>
 
   <!-- Filter tabs -->
   <nav class="filter-tabs" aria-label="Filter todos">

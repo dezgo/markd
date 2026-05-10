@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v28';
+const VERSION = 'v29';
 
 let todos = [];
 let filter = 'active';
@@ -546,11 +546,49 @@ function urlBase64ToUint8Array(b64) {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
-const notifBtn = document.getElementById('notif-btn');
+const notifBanner = document.getElementById('notif-banner');
+
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+function hideBanner() {
+  notifBanner.hidden = true;
+  notifBanner.innerHTML = '';
+}
+
+function showInstallBanner() {
+  notifBanner.hidden = false;
+  notifBanner.className = 'notif-banner is-install';
+  notifBanner.innerHTML = `
+    <div class="notif-banner-text">
+      <strong>Install to get reminders</strong>
+      <span>iOS only sends notifications from installed apps. Tap the <b>Share</b> icon below, then <b>Add to Home Screen</b>.</span>
+    </div>
+  `;
+}
+
+function showEnableBanner(onEnable) {
+  notifBanner.hidden = false;
+  notifBanner.className = 'notif-banner';
+  notifBanner.innerHTML = `
+    <div class="notif-banner-text">
+      <strong>Turn on reminders</strong>
+      <span>Get pushed when your tasks are due, even when the app is closed.</span>
+    </div>
+    <button type="button" class="notif-banner-cta">Enable</button>
+  `;
+  notifBanner.querySelector('.notif-banner-cta').addEventListener('click', onEnable);
+}
 
 async function setupPush() {
+  // iOS Safari (not installed) — has no Notification API at all. Push the install path.
+  if (isIOS && !isStandalone) {
+    showInstallBanner();
+    return;
+  }
+
   if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
-  if (Notification.permission === 'denied') return;
+  if (Notification.permission === 'denied') { hideBanner(); return; }
 
   let reg;
   try { reg = await navigator.serviceWorker.ready; } catch { return; }
@@ -565,7 +603,7 @@ async function setupPush() {
     try {
       const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes });
       await api('/push/subscribe', { method: 'POST', body: JSON.stringify(sub.toJSON()) }).catch(() => {});
-      notifBtn.hidden = true;
+      hideBanner();
       return;
     } catch {
       const stale = await reg.pushManager.getSubscription().catch(() => null);
@@ -573,20 +611,17 @@ async function setupPush() {
     }
   }
 
-  notifBtn.hidden = false;
-  notifBtn.onclick = async () => {
+  showEnableBanner(async () => {
     const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return;
+    if (perm !== 'granted') { hideBanner(); return; }
     try {
       const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes });
       await api('/push/subscribe', { method: 'POST', body: JSON.stringify(sub.toJSON()) });
-      notifBtn.classList.add('is-on');
-      notifBtn.title = 'Notifications on';
-      notifBtn.onclick = null;
+      hideBanner();
     } catch (e) {
       console.error('Push subscribe failed', e);
     }
-  };
+  });
 }
 
 document.querySelectorAll('.tab').forEach(btn => {

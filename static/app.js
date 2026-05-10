@@ -432,6 +432,43 @@ addForm.addEventListener('submit', async e => {
   newTitle.focus();
 });
 
+// ---------------------------------------------------------------------------
+// Push notifications
+// ---------------------------------------------------------------------------
+
+function urlBase64ToUint8Array(b64) {
+  const padding = '='.repeat((4 - b64.length % 4) % 4);
+  const base64 = (b64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function setupPush() {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+  if (Notification.permission === 'denied') return;
+
+  let reg;
+  try { reg = await navigator.serviceWorker.ready; } catch { return; }
+  if (!reg.pushManager) return;
+
+  try {
+    const { publicKey } = await api('/push/vapid-public-key');
+    if (!publicKey) return;
+
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') return;
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+    }
+
+    await api('/push/subscribe', { method: 'POST', body: JSON.stringify(sub.toJSON()) });
+  } catch { /* permission denied or not supported — silently skip */ }
+}
+
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
     filter = btn.dataset.filter;
@@ -442,3 +479,4 @@ document.querySelectorAll('.tab').forEach(btn => {
 });
 
 load();
+setupPush();

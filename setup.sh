@@ -62,6 +62,41 @@ fi
 sudo nginx -t
 sudo systemctl reload nginx
 
+# ── VAPID keys ────────────────────────────────────────────────────────────────
+if ! grep -q "^VAPID_PRIVATE_KEY=.\+" "$DIR/.env" 2>/dev/null; then
+    echo "==> Generating VAPID keys"
+    VAPID_KEYS=$("$DIR/.venv/bin/python3" - <<'PYEOF'
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import serialization
+import base64
+key = ec.generate_private_key(ec.SECP256R1())
+priv = base64.urlsafe_b64encode(key.private_bytes(
+    serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption()
+)).decode().rstrip('=')
+pub = base64.urlsafe_b64encode(key.public_key().public_bytes(
+    serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+)).decode().rstrip('=')
+print(priv, pub)
+PYEOF
+)
+    VAPID_PRIV=$(echo "$VAPID_KEYS" | cut -d' ' -f1)
+    VAPID_PUB=$(echo "$VAPID_KEYS"  | cut -d' ' -f2)
+    sed -i "s|^VAPID_PRIVATE_KEY=.*|VAPID_PRIVATE_KEY=$VAPID_PRIV|" "$DIR/.env"
+    sed -i "s|^VAPID_PUBLIC_KEY=.*|VAPID_PUBLIC_KEY=$VAPID_PUB|"   "$DIR/.env"
+    echo "    VAPID keys written to .env"
+else
+    echo "==> VAPID keys already present — skipping"
+fi
+
+# ── Notification cron job ─────────────────────────────────────────────────────
+CRON_CMD="* * * * * $DIR/.venv/bin/python3 $DIR/send_notifications.py >> $LOG_DIR/notifications.log 2>&1"
+if ! crontab -l 2>/dev/null | grep -qF "send_notifications.py"; then
+    echo "==> Installing notification cron job"
+    (crontab -l 2>/dev/null; echo "$CRON_CMD") | crontab -
+else
+    echo "==> Cron job already installed"
+fi
+
 # ── Sudoers ───────────────────────────────────────────────────────────────────
 echo "==> Installing sudoers rules"
 sudo cp "$DIR/deploy/sudoers-derek-ops" /etc/sudoers.d/derek-ops

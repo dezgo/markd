@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import db
-from models import Todo, RECURRENCE_UNITS
+from models import Todo, PushSubscription, RECURRENCE_UNITS
 
 
 def next_due_date(base: date, interval: int, unit: str) -> date:
@@ -83,6 +83,7 @@ with app.app_context():
         "due_time":            "VARCHAR(5)",
         "notes":               "TEXT",
         "spawned_from_id":     "INTEGER",
+        "notified_at":         "DATETIME",
     }
     with db.engine.connect() as conn:
         for col, coltype in new_cols.items():
@@ -278,6 +279,53 @@ def delete_todo(todo_id):
         abort(404)
     db.session.delete(todo)
     db.session.commit()
+    return "", 204
+
+
+# ---------------------------------------------------------------------------
+# Push notifications
+# ---------------------------------------------------------------------------
+
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_CONTACT = os.environ.get("VAPID_CONTACT", "mailto:admin@example.com")
+
+
+@app.route("/push/vapid-public-key")
+@require_session
+def push_vapid_key():
+    return jsonify({"publicKey": VAPID_PUBLIC_KEY})
+
+
+@app.route("/push/subscribe", methods=["POST"])
+@require_session
+def push_subscribe():
+    data = request.get_json(silent=True) or {}
+    endpoint = data.get("endpoint")
+    keys = data.get("keys") or {}
+    p256dh = keys.get("p256dh")
+    auth = keys.get("auth")
+    if not endpoint or not p256dh or not auth:
+        return jsonify({"error": "endpoint, keys.p256dh, and keys.auth are required"}), 400
+
+    sub = PushSubscription.query.filter_by(endpoint=endpoint).first()
+    if sub:
+        sub.p256dh = p256dh
+        sub.auth = auth
+    else:
+        db.session.add(PushSubscription(endpoint=endpoint, p256dh=p256dh, auth=auth))
+    db.session.commit()
+    return "", 204
+
+
+@app.route("/push/subscribe", methods=["DELETE"])
+@require_session
+def push_unsubscribe():
+    data = request.get_json(silent=True) or {}
+    endpoint = data.get("endpoint")
+    if endpoint:
+        PushSubscription.query.filter_by(endpoint=endpoint).delete()
+        db.session.commit()
     return "", 204
 
 

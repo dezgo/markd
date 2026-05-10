@@ -16,6 +16,7 @@ class Todo(db.Model):
     spawned_from_id = db.Column(db.Integer, nullable=True)
     recurrence_interval = db.Column(db.Integer, nullable=True)
     recurrence_unit = db.Column(db.String(10), nullable=True)
+    notified_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
         db.DateTime,
@@ -38,3 +39,13 @@ class Todo(db.Model):
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
+
+
+class PushSubscription(db.Model):
+    __tablename__ = "push_subscriptions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    endpoint = db.Column(db.Text, nullable=False, unique=True)
+    p256dh = db.Column(db.Text, nullable=False)
+    auth = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

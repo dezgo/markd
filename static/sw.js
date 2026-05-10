@@ -1,4 +1,4 @@
-const CACHE = 'markd-v9';
+const CACHE = 'markd-v10';
 const PRECACHE = [
   '/',
   '/static/app.css',
@@ -17,6 +17,30 @@ self.addEventListener('activate', e => {
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('push', e => {
+  const data = e.data ? e.data.json() : {};
+  const title = data.title || 'Markd';
+  const options = {
+    body: data.body || '',
+    icon: '/static/icons/icon-192.png',
+    badge: '/static/icons/favicon-96x96.png',
+    tag: data.tag || 'markd',
+    data: { url: '/' },
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      const hit = list.find(c => new URL(c.url).origin === self.location.origin);
+      if (hit) return hit.focus();
+      return clients.openWindow('/');
+    })
   );
 });
 

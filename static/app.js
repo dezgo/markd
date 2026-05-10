@@ -1,9 +1,10 @@
 'use strict';
 
-const VERSION = 'v25';
+const VERSION = 'v26';
 
 let todos = [];
 let filter = 'active';
+let editingId = null;
 
 const list = document.getElementById('todo-list');
 const emptyMsg = document.getElementById('empty-msg');
@@ -15,6 +16,8 @@ const newNotes = document.getElementById('new-notes');
 const newRecurInterval = document.getElementById('new-recur-interval');
 const newRecurUnit = document.getElementById('new-recur-unit');
 const newDayToggles = document.getElementById('new-day-toggles');
+const submitBtn = document.getElementById('submit-btn');
+const cancelEditBtn = document.getElementById('cancel-edit-btn');
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -27,7 +30,7 @@ function formatRecurrence(todo) {
   return `↻ every ${todo.recurrence_interval} ${todo.recurrence_unit}`;
 }
 
-// Day-toggle helpers — work on any container with .day-toggle children
+// Day-toggle helpers
 function getSelectedDays(container) {
   return [...container.querySelectorAll('.day-toggle.is-on')]
     .map(b => +b.dataset.day).sort((a, b) => a - b);
@@ -45,7 +48,6 @@ function wireDayToggles(container) {
 }
 wireDayToggles(newDayToggles);
 
-// Show/hide day toggles when unit changes
 newRecurUnit.addEventListener('change', () => {
   newDayToggles.hidden = newRecurUnit.value !== 'weeks';
 });
@@ -64,7 +66,6 @@ async function api(path, options = {}) {
 
 async function load() {
   const fresh = await api('/todos');
-  // Skip re-render if nothing actually changed (avoids flicker during polling)
   if (JSON.stringify(fresh) === JSON.stringify(todos)) return;
   todos = fresh;
   render();
@@ -78,9 +79,9 @@ function isDueByEndOfToday(todo) {
   let due;
   if (todo.due_time) {
     const [h, mn] = todo.due_time.split(':').map(Number);
-    due = new Date(Date.UTC(y, m - 1, d, h, mn));  // stored UTC
+    due = new Date(Date.UTC(y, m - 1, d, h, mn));
   } else {
-    due = new Date(y, m - 1, d);  // local date
+    due = new Date(y, m - 1, d);
   }
   return due <= endOfToday;
 }
@@ -98,7 +99,6 @@ function formatDue(isoDate, timeStr) {
   let overdue = false;
 
   if (isoDate && timeStr) {
-    // Stored as UTC — convert to local for display
     const [y, m, d] = isoDate.split('-').map(Number);
     const [h, min] = timeStr.split(':').map(Number);
     const due = new Date(Date.UTC(y, m - 1, d, h, min));
@@ -107,7 +107,6 @@ function formatDue(isoDate, timeStr) {
     const timeLabel = due.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     label = `${label} at ${timeLabel}`;
   } else if (isoDate) {
-    // Date-only — no timezone conversion
     const [y, m, d] = isoDate.split('-').map(Number);
     const due = new Date(y, m - 1, d);
     const today = new Date();
@@ -130,17 +129,17 @@ function render() {
 
   for (const todo of visible) {
     const li = document.createElement('li');
-    li.className = 'todo-item' + (todo.done ? ' is-done' : '');
+    li.className = 'todo-item' + (todo.done ? ' is-done' : '') + (todo.id === editingId ? ' is-editing' : '');
     li.dataset.id = todo.id;
 
     const due = formatDue(todo.due_date, todo.due_time);
     const dueHtml = due
       ? `<div class="todo-due${due.overdue ? ' is-overdue' : ''}">${due.overdue ? '⚠ ' : ''}${due.label}</div>`
-      : '';
+      : (todo.done ? '' : `<div class="todo-due is-empty">+ due</div>`);
     const recurLabel = formatRecurrence(todo);
     const recurHtml = recurLabel
-      ? `<span class="todo-recur" title="Tap to edit">${recurLabel}</span>`
-      : '';
+      ? `<span class="todo-recur">${recurLabel}</span>`
+      : (todo.done ? '' : `<span class="todo-recur is-empty">+ repeat</span>`);
 
     const showNotes = todo.notes || !todo.done;
     const notesHtml = showNotes
@@ -151,8 +150,8 @@ function render() {
       <button class="todo-check" aria-label="${todo.done ? 'Mark incomplete' : 'Mark complete'}">
         <span class="todo-check-inner"></span>
       </button>
-      <div class="todo-body">
-        <div class="todo-title" title="Tap to edit">${escHtml(todo.title)}</div>
+      <div class="todo-body" title="${todo.done ? '' : 'Tap to edit'}">
+        <div class="todo-title">${escHtml(todo.title)}</div>
         ${notesHtml}
         <div class="todo-meta">${dueHtml}${recurHtml}</div>
       </div>
@@ -161,13 +160,9 @@ function render() {
 
     li.querySelector('.todo-check').addEventListener('click', () => toggleDone(todo));
     li.querySelector('.todo-delete').addEventListener('click', () => remove(todo));
-    li.querySelector('.todo-title').addEventListener('click', () => startEdit(li, todo));
-
-    const notesEl = li.querySelector('.todo-notes');
-    if (notesEl && !todo.done) notesEl.addEventListener('click', () => startNotesEdit(li, todo));
-
-    const recurEl = li.querySelector('.todo-recur');
-    if (recurEl) recurEl.addEventListener('click', () => startRecurEdit(li, todo));
+    if (!todo.done) {
+      li.querySelector('.todo-body').addEventListener('click', () => startEditingTask(todo));
+    }
 
     list.appendChild(li);
   }
@@ -178,209 +173,75 @@ function escHtml(s) {
 }
 
 // ---------------------------------------------------------------------------
-// Inline edit — title
+// Edit mode — populates the top form with a task's data
 // ---------------------------------------------------------------------------
 
-function startEdit(li, todo) {
-  if (todo.done) return;
-  const titleEl = li.querySelector('.todo-title');
-  if (li.querySelector('.todo-edit-input')) return;
+function startEditingTask(todo) {
+  editingId = todo.id;
+  newTitle.value = todo.title;
 
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'todo-edit-input';
-  input.value = todo.title;
-  input.maxLength = 500;
-  titleEl.replaceWith(input);
-  input.focus();
-  input.select();
-
-  let saved = false;
-
-  async function save() {
-    if (saved) return;
-    saved = true;
-    const val = input.value.trim();
-    if (!val || val === todo.title) { cancelEdit(); return; }
-    const updated = await api(`/todos/${todo.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ title: val }),
-    });
-    const idx = todos.findIndex(t => t.id === todo.id);
-    if (idx !== -1) todos[idx] = updated;
-    render();
+  // Convert UTC date+time back to local for editing
+  if (todo.due_date && todo.due_time) {
+    const [y, m, d] = todo.due_date.split('-').map(Number);
+    const [h, mn] = todo.due_time.split(':').map(Number);
+    const local = new Date(Date.UTC(y, m - 1, d, h, mn));
+    newDue.value = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`;
+    newDueTime.value = `${String(local.getHours()).padStart(2, '0')}:${String(local.getMinutes()).padStart(2, '0')}`;
+  } else if (todo.due_date) {
+    newDue.value = todo.due_date;
+    newDueTime.value = '';
+  } else if (todo.due_time) {
+    newDue.value = '';
+    newDueTime.value = todo.due_time;
+  } else {
+    newDue.value = '';
+    newDueTime.value = '';
   }
 
-  function cancelEdit() {
-    if (saved) return;
-    saved = true;
-    const restored = document.createElement('div');
-    restored.className = 'todo-title';
-    restored.title = 'Tap to edit';
-    restored.textContent = todo.title;
-    restored.addEventListener('click', () => startEdit(li, todo));
-    input.replaceWith(restored);
-  }
+  newNotes.value = todo.notes || '';
+  newRecurUnit.value = todo.recurrence_unit || 'weeks';
+  newRecurInterval.value = todo.recurrence_interval || '';
+  newDayToggles.hidden = newRecurUnit.value !== 'weeks';
+  setSelectedDays(newDayToggles, todo.recurrence_days);
 
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); save(); }
-    if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
-  });
-  input.addEventListener('blur', save);
+  document.body.classList.add('is-editing');
+  submitBtn.textContent = '✓';
+  submitBtn.title = 'Save changes';
+  cancelEditBtn.hidden = false;
+
+  render();  // re-highlight the editing row
+  newTitle.focus();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// ---------------------------------------------------------------------------
-// Inline edit — notes
-// ---------------------------------------------------------------------------
+function cancelEditing() {
+  editingId = null;
+  newTitle.value = '';
+  newDue.value = '';
+  newDueTime.value = '';
+  newNotes.value = '';
+  newRecurInterval.value = '';
+  setSelectedDays(newDayToggles, '');
+  newRecurUnit.value = 'weeks';
+  newDayToggles.hidden = false;
 
-function startNotesEdit(li, todo) {
-  const notesEl = li.querySelector('.todo-notes');
-  if (!notesEl || li.querySelector('.todo-notes-input')) return;
-
-  const ta = document.createElement('textarea');
-  ta.className = 'todo-notes-input';
-  ta.value = todo.notes || '';
-  ta.placeholder = 'Add a note…';
-  ta.maxLength = 2000;
-  ta.rows = 2;
-  notesEl.replaceWith(ta);
-  ta.focus();
-
-  let saved = false;
-
-  async function save() {
-    if (saved) return;
-    saved = true;
-    const val = ta.value.trim() || null;
-    if (val === (todo.notes || null)) { cancelNotesEdit(); return; }
-    const updated = await api(`/todos/${todo.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ notes: val }),
-    });
-    const idx = todos.findIndex(t => t.id === todo.id);
-    if (idx !== -1) todos[idx] = updated;
-    render();
-  }
-
-  function cancelNotesEdit() {
-    if (saved) return;
-    saved = true;
-    const restored = document.createElement('div');
-    restored.className = 'todo-notes' + (todo.notes ? '' : ' is-empty');
-    restored.textContent = todo.notes || 'Add note…';
-    restored.addEventListener('click', () => startNotesEdit(li, todo));
-    ta.replaceWith(restored);
-  }
-
-  ta.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { e.preventDefault(); cancelNotesEdit(); }
-    if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); save(); }
-  });
-  ta.addEventListener('blur', save);
+  document.body.classList.remove('is-editing');
+  submitBtn.textContent = '＋';
+  submitBtn.title = 'Add todo';
+  cancelEditBtn.hidden = true;
+  render();
 }
 
-// ---------------------------------------------------------------------------
-// Inline edit — recurrence
-// ---------------------------------------------------------------------------
-
-function startRecurEdit(li, todo) {
-  const recurEl = li.querySelector('.todo-recur');
-  if (!recurEl || li.querySelector('.todo-recur-edit')) return;
-
-  const wrap = document.createElement('span');
-  wrap.className = 'todo-recur-edit';
-
-  const numInput = document.createElement('input');
-  numInput.type = 'number';
-  numInput.min = 1;
-  numInput.max = 99;
-  numInput.className = 'recur-edit-num';
-  numInput.value = todo.recurrence_interval || '';
-
-  const unitSel = document.createElement('select');
-  unitSel.className = 'recur-edit-unit';
-  for (const u of ['days', 'weeks', 'months', 'years']) {
-    const opt = document.createElement('option');
-    opt.value = u;
-    opt.textContent = u;
-    if (u === todo.recurrence_unit) opt.selected = true;
-    unitSel.appendChild(opt);
-  }
-
-  wrap.append(numInput, ' ', unitSel);
-  // Day toggles (only used when unit is "weeks")
-  const dayWrap = document.createElement('span');
-  dayWrap.className = 'day-toggles recur-edit-days';
-  for (let i = 0; i < 7; i++) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'day-toggle';
-    b.dataset.day = i;
-    b.title = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][i];
-    b.textContent = ['S','M','T','W','T','F','S'][i];
-    dayWrap.appendChild(b);
-  }
-  wireDayToggles(dayWrap);
-  setSelectedDays(dayWrap, todo.recurrence_days);
-  dayWrap.style.display = unitSel.value === 'weeks' ? '' : 'none';
-  unitSel.addEventListener('change', () => {
-    dayWrap.style.display = unitSel.value === 'weeks' ? '' : 'none';
-  });
-  wrap.appendChild(dayWrap);
-
-  recurEl.replaceWith(wrap);
-  numInput.focus();
-  numInput.select();
-
-  let saved = false;
-
-  async function save() {
-    if (saved) return;
-    saved = true;
-    const days = unitSel.value === 'weeks' ? getSelectedDays(dayWrap) : [];
-    let body;
-    if (days.length > 0) {
-      body = { recurrence_unit: 'weeks', recurrence_days: days.join(',') };
-    } else {
-      const interval = parseInt(numInput.value, 10);
-      if (!interval || interval < 1) { cancel(); return; }
-      body = { recurrence_interval: interval, recurrence_unit: unitSel.value, recurrence_days: null };
+cancelEditBtn.addEventListener('click', () => cancelEditing());
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && editingId !== null && document.activeElement !== document.body) {
+    // only cancel if focus is on the form
+    if (addForm.contains(document.activeElement)) {
+      e.preventDefault();
+      cancelEditing();
     }
-    const updated = await api(`/todos/${todo.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(body),
-    });
-    const idx = todos.findIndex(t => t.id === todo.id);
-    if (idx !== -1) todos[idx] = updated;
-    render();
   }
-
-  function cancel() {
-    if (saved) return;
-    saved = true;
-    const badge = document.createElement('span');
-    badge.className = 'todo-recur';
-    badge.title = 'Tap to edit';
-    badge.textContent = formatRecurrence(todo) || '';
-    badge.addEventListener('click', () => startRecurEdit(li, todo));
-    wrap.replaceWith(badge);
-  }
-
-  function onBlur() {
-    setTimeout(() => { if (!wrap.contains(document.activeElement)) save(); }, 200);
-  }
-
-  numInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); save(); }
-    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-  });
-  unitSel.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); save(); }
-    if (e.key === 'Escape') { e.preventDefault(); cancel(); }
-  });
-  numInput.addEventListener('blur', onBlur);
-  unitSel.addEventListener('blur', onBlur);
-}
+});
 
 // ---------------------------------------------------------------------------
 // Toast helper
@@ -427,12 +288,10 @@ function toggleDone(todo) {
   if (pendingToggle) commitToggle();
 
   if (todo.done) {
-    // Un-completing — do immediately, no toast; backend deletes spawned child
     api(`/todos/${todo.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ done: false }),
     }).then(updated => {
-      // Reload list — backend may have deleted the spawned child
       return api('/todos').then(all => { todos = all; });
     }).then(() => render());
     return;
@@ -473,6 +332,7 @@ function commitDelete() {
 
 function remove(todo) {
   if (pendingDelete) commitDelete();
+  if (todo.id === editingId) cancelEditing();
 
   todos = todos.filter(t => t.id !== todo.id);
   render();
@@ -492,16 +352,13 @@ function remove(todo) {
 }
 
 // ---------------------------------------------------------------------------
-// Add todo
+// Form submit — add or edit
 // ---------------------------------------------------------------------------
 
-addForm.addEventListener('submit', async e => {
-  e.preventDefault();
-  const title = newTitle.value.trim();
-  if (!title) return;
-  const payload = { title };
+function buildPayload({ forUpdate }) {
+  const payload = { title: newTitle.value.trim() };
+
   if (newDue.value && newDueTime.value) {
-    // Convert local date+time to UTC for storage
     const [y, m, d] = newDue.value.split('-').map(Number);
     const [h, min] = newDueTime.value.split(':').map(Number);
     const local = new Date(y, m - 1, d, h, min);
@@ -509,18 +366,56 @@ addForm.addEventListener('submit', async e => {
     payload.due_time = local.toISOString().slice(11, 16);
   } else if (newDue.value) {
     payload.due_date = newDue.value;
+    if (forUpdate) payload.due_time = null;
   } else if (newDueTime.value) {
     payload.due_time = newDueTime.value;
+    if (forUpdate) payload.due_date = null;
+  } else if (forUpdate) {
+    payload.due_date = null;
+    payload.due_time = null;
   }
-  if (newNotes.value.trim()) payload.notes = newNotes.value.trim();
+
+  if (newNotes.value.trim()) {
+    payload.notes = newNotes.value.trim();
+  } else if (forUpdate) {
+    payload.notes = null;
+  }
+
   const selectedDays = newRecurUnit.value === 'weeks' ? getSelectedDays(newDayToggles) : [];
   if (selectedDays.length > 0) {
     payload.recurrence_unit = 'weeks';
     payload.recurrence_days = selectedDays.join(',');
+    if (forUpdate) payload.recurrence_interval = null;
   } else if (newRecurInterval.value) {
     payload.recurrence_interval = parseInt(newRecurInterval.value, 10);
     payload.recurrence_unit = newRecurUnit.value;
+    if (forUpdate) payload.recurrence_days = null;
+  } else if (forUpdate) {
+    payload.recurrence_interval = null;
+    payload.recurrence_unit = null;
+    payload.recurrence_days = null;
   }
+
+  return payload;
+}
+
+addForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!newTitle.value.trim()) return;
+
+  if (editingId !== null) {
+    const payload = buildPayload({ forUpdate: true });
+    const updated = await api(`/todos/${editingId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    const idx = todos.findIndex(t => t.id === editingId);
+    if (idx !== -1) todos[idx] = updated;
+    cancelEditing();
+    return;
+  }
+
+  const payload = buildPayload({ forUpdate: false });
   const created = await api('/todos', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -565,10 +460,6 @@ async function setupPush() {
 
   const keyBytes = urlBase64ToUint8Array(publicKey);
 
-  // If permission already granted, subscribe directly with the current key.
-  // This returns the existing sub if the key matches, or throws if it changed
-  // (e.g. VAPID keys regenerated on server) — in which case we unsubscribe
-  // the stale sub and fall through to show the bell for re-subscription.
   if (Notification.permission === 'granted') {
     try {
       const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes });
@@ -581,7 +472,6 @@ async function setupPush() {
     }
   }
 
-  // Show the bell — user must tap to trigger the permission dialog
   notifBtn.hidden = false;
   notifBtn.onclick = async () => {
     const perm = await Notification.requestPermission();
@@ -618,9 +508,7 @@ const POLL_MS = 10000;
 let pollTimer = null;
 
 function isUserBusy() {
-  return !!document.querySelector(
-    '.todo-edit-input, .todo-notes-input, .todo-recur-edit, .toast'
-  );
+  return editingId !== null || !!document.querySelector('.toast');
 }
 
 async function poll() {

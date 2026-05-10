@@ -382,6 +382,24 @@ body {
 
 .add-row button:hover { background: var(--accent-dark); }
 
+.cancel-edit-btn {
+  background: var(--surface) !important;
+  color: var(--muted) !important;
+  border: 1px solid var(--border) !important;
+  font-size: 1rem !important;
+}
+.cancel-edit-btn:hover { background: var(--border) !important; color: var(--danger) !important; }
+
+body.is-editing #submit-btn { font-size: 1.2rem; }
+
+.todo-item.is-editing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.18);
+}
+
+.todo-body { cursor: pointer; }
+.todo-item.is-done .todo-body { cursor: default; }
+
 .add-details {
   display: flex;
   flex-wrap: wrap;

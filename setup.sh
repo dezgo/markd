@@ -101,9 +101,6 @@ PYEOF
     rm -f /tmp/_gen_vapid.py
     VAPID_PRIV=$(echo "$VAPID_KEYS" | cut -d' ' -f1)
     VAPID_PUB=$(echo "$VAPID_KEYS"  | cut -d' ' -f2)
-    if ! grep -q "^TIMEZONE=" "$DIR/.env"; then
-        echo "TIMEZONE=Australia/Sydney" >> "$DIR/.env"
-    fi
     if grep -q "^VAPID_PRIVATE_KEY=" "$DIR/.env"; then
         sed -i "s|^VAPID_PRIVATE_KEY=.*|VAPID_PRIVATE_KEY=$VAPID_PRIV|" "$DIR/.env"
         sed -i "s|^VAPID_PUBLIC_KEY=.*|VAPID_PUBLIC_KEY=$VAPID_PUB|"   "$DIR/.env"

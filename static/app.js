@@ -40,20 +40,27 @@ function formatDue(isoDate, timeStr) {
   let label = '';
   let overdue = false;
 
-  if (isoDate) {
+  if (isoDate && timeStr) {
+    // Stored as UTC — convert to local for display
+    const [y, m, d] = isoDate.split('-').map(Number);
+    const [h, min] = timeStr.split(':').map(Number);
+    const due = new Date(Date.UTC(y, m - 1, d, h, min));
+    overdue = due < new Date();
+    label = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const timeLabel = due.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    label = `${label} at ${timeLabel}`;
+  } else if (isoDate) {
+    // Date-only — no timezone conversion
     const [y, m, d] = isoDate.split('-').map(Number);
     const due = new Date(y, m - 1, d);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     overdue = due < today;
     label = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  }
-
-  if (timeStr) {
+  } else if (timeStr) {
     const [h, min] = timeStr.split(':').map(Number);
     const t = new Date(2000, 0, 1, h, min);
-    const timeLabel = t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-    label = label ? `${label} at ${timeLabel}` : timeLabel;
+    label = t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   }
 
   return { label, overdue };
@@ -408,8 +415,18 @@ addForm.addEventListener('submit', async e => {
   const title = newTitle.value.trim();
   if (!title) return;
   const payload = { title };
-  if (newDue.value) payload.due_date = newDue.value;
-  if (newDueTime.value) payload.due_time = newDueTime.value;
+  if (newDue.value && newDueTime.value) {
+    // Convert local date+time to UTC for storage
+    const [y, m, d] = newDue.value.split('-').map(Number);
+    const [h, min] = newDueTime.value.split(':').map(Number);
+    const local = new Date(y, m - 1, d, h, min);
+    payload.due_date = local.toISOString().slice(0, 10);
+    payload.due_time = local.toISOString().slice(11, 16);
+  } else if (newDue.value) {
+    payload.due_date = newDue.value;
+  } else if (newDueTime.value) {
+    payload.due_time = newDueTime.value;
+  }
   if (newNotes.value.trim()) payload.notes = newNotes.value.trim();
   if (newRecurInterval.value) {
     payload.recurrence_interval = parseInt(newRecurInterval.value, 10);

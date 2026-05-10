@@ -1,10 +1,12 @@
 'use strict';
 
-const VERSION = 'v27';
+const VERSION = 'v28';
 
 let todos = [];
 let filter = 'active';
 let editingId = null;
+let showUpcoming = false;
+const TODAY_GROUPS = new Set(['Overdue', 'Today']);
 
 const list = document.getElementById('todo-list');
 const emptyMsg = document.getElementById('empty-msg');
@@ -106,12 +108,11 @@ function compareByDue(a, b) {
 
 function filtered() {
   let result;
-  if (filter === 'today') result = todos.filter(t => !t.done && isDueByEndOfToday(t));
-  else if (filter === 'active') result = todos.filter(t => !t.done);
+  if (filter === 'active') result = todos.filter(t => !t.done);
   else if (filter === 'done') result = todos.filter(t => t.done);
   else result = [...todos];
 
-  if (filter === 'active' || filter === 'today') {
+  if (filter === 'active') {
     result = [...result].sort(compareByDue);
   }
   return result;
@@ -146,49 +147,125 @@ function formatDue(isoDate, timeStr) {
   return { label, overdue };
 }
 
+function renderTodoItem(todo) {
+  const li = document.createElement('li');
+  li.className = 'todo-item' + (todo.done ? ' is-done' : '') + (todo.id === editingId ? ' is-editing' : '');
+  li.dataset.id = todo.id;
+
+  const due = formatDue(todo.due_date, todo.due_time);
+  const dueHtml = due
+    ? `<div class="todo-due${due.overdue ? ' is-overdue' : ''}">${due.overdue ? '⚠ ' : ''}${due.label}</div>`
+    : (todo.done ? '' : `<div class="todo-due is-empty">+ due</div>`);
+  const recurLabel = formatRecurrence(todo);
+  const recurHtml = recurLabel
+    ? `<span class="todo-recur">${recurLabel}</span>`
+    : (todo.done ? '' : `<span class="todo-recur is-empty">+ repeat</span>`);
+
+  const showNotes = todo.notes || !todo.done;
+  const notesHtml = showNotes
+    ? `<div class="todo-notes${todo.notes ? '' : ' is-empty'}">${todo.notes ? escHtml(todo.notes) : 'Add note…'}</div>`
+    : '';
+
+  li.innerHTML = `
+    <button class="todo-check" aria-label="${todo.done ? 'Mark incomplete' : 'Mark complete'}">
+      <span class="todo-check-inner"></span>
+    </button>
+    <div class="todo-body" title="${todo.done ? '' : 'Tap to edit'}">
+      <div class="todo-title">${escHtml(todo.title)}</div>
+      ${notesHtml}
+      <div class="todo-meta">${dueHtml}${recurHtml}</div>
+    </div>
+    <button class="todo-delete" aria-label="Delete todo">✕</button>
+  `;
+
+  li.querySelector('.todo-check').addEventListener('click', () => toggleDone(todo));
+  li.querySelector('.todo-delete').addEventListener('click', () => remove(todo));
+  if (!todo.done) {
+    li.querySelector('.todo-body').addEventListener('click', () => startEditingTask(todo));
+  }
+  return li;
+}
+
+const GROUP_ORDER = ['Overdue', 'Today', 'Tomorrow', 'This week', 'Later', 'No date'];
+
+function groupForTodo(t) {
+  if (!t.due_date) return 'No date';
+  const [y, m, d] = t.due_date.split('-').map(Number);
+  let dueLocalDate;
+  if (t.due_time) {
+    const [h, mn] = t.due_time.split(':').map(Number);
+    const dueDt = new Date(Date.UTC(y, m - 1, d, h, mn));
+    dueLocalDate = new Date(dueDt.getFullYear(), dueDt.getMonth(), dueDt.getDate());
+  } else {
+    dueLocalDate = new Date(y, m - 1, d);
+  }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = Math.round((dueLocalDate - today) / 86400000);
+  if (days < 0) return 'Overdue';
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  if (days < 7) return 'This week';
+  return 'Later';
+}
+
 function render() {
   const visible = filtered();
   list.innerHTML = '';
-  emptyMsg.hidden = visible.length > 0;
 
-  for (const todo of visible) {
-    const li = document.createElement('li');
-    li.className = 'todo-item' + (todo.done ? ' is-done' : '') + (todo.id === editingId ? ' is-editing' : '');
-    li.dataset.id = todo.id;
+  if (filter !== 'active') {
+    emptyMsg.hidden = visible.length > 0;
+    visible.forEach(t => list.appendChild(renderTodoItem(t)));
+    return;
+  }
 
-    const due = formatDue(todo.due_date, todo.due_time);
-    const dueHtml = due
-      ? `<div class="todo-due${due.overdue ? ' is-overdue' : ''}">${due.overdue ? '⚠ ' : ''}${due.label}</div>`
-      : (todo.done ? '' : `<div class="todo-due is-empty">+ due</div>`);
-    const recurLabel = formatRecurrence(todo);
-    const recurHtml = recurLabel
-      ? `<span class="todo-recur">${recurLabel}</span>`
-      : (todo.done ? '' : `<span class="todo-recur is-empty">+ repeat</span>`);
+  // Group active by due-date bucket
+  const groups = Object.fromEntries(GROUP_ORDER.map(g => [g, []]));
+  visible.forEach(t => groups[groupForTodo(t)].push(t));
 
-    const showNotes = todo.notes || !todo.done;
-    const notesHtml = showNotes
-      ? `<div class="todo-notes${todo.notes ? '' : ' is-empty'}">${todo.notes ? escHtml(todo.notes) : 'Add note…'}</div>`
-      : '';
+  const todayCount = groups['Overdue'].length + groups['Today'].length;
+  const upcomingCount = visible.length - todayCount;
 
-    li.innerHTML = `
-      <button class="todo-check" aria-label="${todo.done ? 'Mark incomplete' : 'Mark complete'}">
-        <span class="todo-check-inner"></span>
-      </button>
-      <div class="todo-body" title="${todo.done ? '' : 'Tap to edit'}">
-        <div class="todo-title">${escHtml(todo.title)}</div>
-        ${notesHtml}
-        <div class="todo-meta">${dueHtml}${recurHtml}</div>
-      </div>
-      <button class="todo-delete" aria-label="Delete todo">✕</button>
-    `;
+  // Decide which groups to show
+  const groupsToShow = showUpcoming ? GROUP_ORDER : GROUP_ORDER.filter(g => TODAY_GROUPS.has(g));
 
-    li.querySelector('.todo-check').addEventListener('click', () => toggleDone(todo));
-    li.querySelector('.todo-delete').addEventListener('click', () => remove(todo));
-    if (!todo.done) {
-      li.querySelector('.todo-body').addEventListener('click', () => startEditingTask(todo));
-    }
+  let renderedItems = 0;
+  for (const name of groupsToShow) {
+    if (groups[name].length === 0) continue;
+    const header = document.createElement('li');
+    header.className = 'todo-group-header' + (name === 'Overdue' ? ' is-overdue' : '');
+    header.textContent = name;
+    list.appendChild(header);
+    groups[name].forEach(t => list.appendChild(renderTodoItem(t)));
+    renderedItems += groups[name].length;
+  }
 
-    list.appendChild(li);
+  // Empty state — only when default view (today) has nothing AND no upcoming hidden
+  if (renderedItems === 0 && upcomingCount === 0) {
+    emptyMsg.hidden = false;
+  } else {
+    emptyMsg.hidden = true;
+  }
+
+  // Friendly nudge if today is empty but upcoming exist
+  if (renderedItems === 0 && upcomingCount > 0 && !showUpcoming) {
+    const empty = document.createElement('li');
+    empty.className = 'todo-group-empty';
+    empty.textContent = 'Nothing due today.';
+    list.appendChild(empty);
+  }
+
+  // Toggle to expand/collapse upcoming
+  if (upcomingCount > 0) {
+    const toggle = document.createElement('li');
+    toggle.className = 'todo-upcoming-toggle';
+    toggle.innerHTML = showUpcoming
+      ? `<button type="button">Hide upcoming</button>`
+      : `<button type="button">Show ${upcomingCount} upcoming →</button>`;
+    toggle.querySelector('button').addEventListener('click', () => {
+      showUpcoming = !showUpcoming;
+      render();
+    });
+    list.appendChild(toggle);
   }
 }
 

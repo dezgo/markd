@@ -532,6 +532,47 @@ body.is-editing #submit-btn { font-size: 1.2rem; }
   gap: 0.5rem;
 }
 
+.todo-group-header {
+  list-style: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 1rem 0.5rem 0.1rem;
+}
+.todo-group-header:first-child { padding-top: 0.25rem; }
+.todo-group-header.is-overdue { color: var(--danger); }
+
+.todo-group-empty {
+  list-style: none;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 1.25rem 0 0.25rem;
+}
+
+.todo-upcoming-toggle {
+  list-style: none;
+  text-align: center;
+  margin-top: 0.75rem;
+}
+.todo-upcoming-toggle button {
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.todo-upcoming-toggle button:hover {
+  background: rgba(99,102,241,0.06);
+  border-color: var(--accent);
+}
+
 .todo-item {
   display: flex;
   align-items: center;

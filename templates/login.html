@@ -17,13 +17,19 @@
   <div class="login-card">
     <h1 class="logo">Markd</h1>
     <form method="post" autocomplete="on">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email" autofocus required>
       <label for="password">Password</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" autofocus required>
-      {% if error %}
-        <p class="error">{{ error }}</p>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      {% if flashed %}
+        {% for msg in flashed %}<p class="success">{{ msg }}</p>{% endfor %}
       {% endif %}
+      {% if error %}<p class="error">{{ error }}</p>{% endif %}
       <button type="submit">Sign in</button>
     </form>
+    <p class="auth-link"><a href="{{ url_for('forgot_password') }}">Forgot password?</a></p>
+    <p class="auth-link">No account? <a href="{{ url_for('signup') }}">Sign up</a></p>
   </div>
 </body>
 </html>

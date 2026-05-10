@@ -33,6 +33,20 @@ if [ ! -f "$DIR/.env" ]; then
     cp "$DIR/.env.example" "$DIR/.env"
 fi
 
+# Append any newly-introduced env vars that aren't in the existing .env
+ensure_env() {
+    local key="$1"
+    local default="$2"
+    if ! grep -q "^${key}=" "$DIR/.env"; then
+        echo "${key}=${default}" >> "$DIR/.env"
+        echo "    added ${key}= to .env (set a real value)"
+    fi
+}
+ensure_env APP_URL "https://$DOMAIN"
+ensure_env INITIAL_ADMIN_EMAIL "you@example.com"
+ensure_env RESEND_API_KEY ""
+ensure_env EMAIL_FROM "Markd <markd@appfoundry.cc>"
+
 # ── Log dir ───────────────────────────────────────────────────────────────────
 echo "==> Log directory"
 sudo mkdir -p "$LOG_DIR"

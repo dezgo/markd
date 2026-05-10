@@ -22,6 +22,18 @@
   <h1>Markd Diagnostics</h1>
   <table>
     <tr>
+      <td>Logged in as</td>
+      <td>{{ info.user_email }}</td>
+    </tr>
+    <tr>
+      <td>Total users on instance</td>
+      <td>{{ info.user_count }}</td>
+    </tr>
+    <tr>
+      <td>Email (Resend) configured</td>
+      <td class="{{ 'ok' if info.email_configured else 'bad' }}">{{ 'yes' if info.email_configured else 'NO' }}</td>
+    </tr>
+    <tr>
       <td>VAPID configured</td>
       <td class="{{ 'ok' if info.vapid_configured else 'bad' }}">{{ 'yes' if info.vapid_configured else 'NO' }}</td>
     </tr>

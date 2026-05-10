@@ -50,14 +50,14 @@ def run():
                 to_notify.append((todo, due_dt))
 
         sub_count = PushSubscription.query.count()
-        log(f"run: {len(candidates)} candidate(s), {len(to_notify)} due, {sub_count} sub(s)")
+        log(f"run: {len(candidates)} candidate(s), {len(to_notify)} due, {sub_count} sub(s) total")
 
         if not to_notify:
             return
 
-        subs = PushSubscription.query.all()
-
         for todo, due_dt in to_notify:
+            # Only send to subs belonging to this todo's user
+            subs = PushSubscription.query.filter_by(user_id=todo.user_id).all()
             payload = json.dumps({
                 "title": todo.title,
                 "body": "Due now",

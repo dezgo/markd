@@ -1,13 +1,19 @@
 import os
-from datetime import date, datetime, timezone, timedelta
+import re
+import secrets
+import sys
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 
 from dateutil.relativedelta import relativedelta
-from sqlalchemy import text, inspect as sa_inspect
+from sqlalchemy import inspect as sa_inspect, text
 
 from flask import (
     Flask,
     abort,
+    flash,
+    g,
+    get_flashed_messages,
     jsonify,
     redirect,
     render_template,
@@ -17,15 +23,21 @@ from flask import (
     url_for,
 )
 from dotenv import load_dotenv
+from werkzeug.security import check_password_hash, generate_password_hash
+
+import resend
 
 load_dotenv()
 
 from database import db
-from models import Todo, PushSubscription, RECURRENCE_UNITS
+from models import EmailToken, PushSubscription, RECURRENCE_UNITS, Todo, User
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def next_due_date(base: date, interval: int, unit: str, days_csv: str = None) -> date:
-    # Weekly multi-day: find next selected weekday after base
     if unit == "weeks" and days_csv:
         days = {int(d) for d in days_csv.split(",") if d}
         for offset in range(1, 8):
@@ -54,8 +66,14 @@ def _valid_time(t: str) -> bool:
         return False
 
 
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _valid_email(e: str) -> bool:
+    return bool(e and _EMAIL_RE.match(e))
+
+
 def parse_recurrence(data: dict):
-    """Return (interval, unit, days_csv, error). days_csv is set when unit=weeks and days specified."""
     interval = data.get("recurrence_interval")
     unit = data.get("recurrence_unit") or None
     days = data.get("recurrence_days")
@@ -63,7 +81,6 @@ def parse_recurrence(data: dict):
     if interval is None and unit is None and not days:
         return None, None, None, None
 
-    # Multi-day weekly: implicit interval=1, days drive the schedule
     if days and unit == "weeks":
         try:
             day_set = sorted({int(d) for d in str(days).split(",") if d != ""})
@@ -86,6 +103,10 @@ def parse_recurrence(data: dict):
     return interval, unit, None, None
 
 
+# ---------------------------------------------------------------------------
+# App init + DB
+# ---------------------------------------------------------------------------
+
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
 _default_db = "sqlite:////var/www/markd/markd.db"
@@ -94,11 +115,20 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
 
+
+def _ensure_columns(table: str, cols: dict):
+    existing = [c["name"] for c in sa_inspect(db.engine).get_columns(table)]
+    with db.engine.connect() as conn:
+        for col, coltype in cols.items():
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {coltype}"))
+                conn.commit()
+
+
 with app.app_context():
-    db.create_all()
-    # Migrate: add new columns if upgrading from old single-column schema
-    existing = [c["name"] for c in sa_inspect(db.engine).get_columns("todos")]
-    new_cols = {
+    db.create_all()  # creates users, email_tokens, and any new tables
+
+    _ensure_columns("todos", {
         "recurrence_interval": "INTEGER",
         "recurrence_unit":     "VARCHAR(10)",
         "recurrence_days":     "VARCHAR(15)",
@@ -106,45 +136,172 @@ with app.app_context():
         "notes":               "TEXT",
         "spawned_from_id":     "INTEGER",
         "notified_at":         "DATETIME",
-    }
-    with db.engine.connect() as conn:
-        for col, coltype in new_cols.items():
-            if col not in existing:
-                conn.execute(text(f"ALTER TABLE todos ADD COLUMN {col} {coltype}"))
-                conn.commit()
+        "user_id":             "INTEGER",
+    })
+    _ensure_columns("push_subscriptions", {
+        "user_id": "INTEGER",
+    })
 
-UI_PASSWORD = os.environ["UI_PASSWORD"]
+    # Initial admin: convert single-password app into multi-user. Runs once.
+    if User.query.count() == 0:
+        admin_email = os.environ.get("INITIAL_ADMIN_EMAIL", "").strip().lower()
+        admin_password = os.environ.get("UI_PASSWORD", "")
+        if admin_email and admin_password:
+            admin = User(
+                email=admin_email,
+                password_hash=generate_password_hash(admin_password),
+                email_verified=True,
+            )
+            db.session.add(admin)
+            db.session.commit()
+            with db.engine.connect() as conn:
+                conn.execute(text(f"UPDATE todos SET user_id = {admin.id} WHERE user_id IS NULL"))
+                conn.execute(text(f"UPDATE push_subscriptions SET user_id = {admin.id} WHERE user_id IS NULL"))
+                conn.commit()
+            print(f"Created initial admin user: {admin_email}", file=sys.stderr, flush=True)
+        else:
+            print(
+                "WARNING: no users exist and INITIAL_ADMIN_EMAIL/UI_PASSWORD not set — "
+                "no initial admin created. Sign up via /signup.",
+                file=sys.stderr, flush=True,
+            )
+
+
+# ---------------------------------------------------------------------------
+# Env config
+# ---------------------------------------------------------------------------
+
 API_KEY = os.environ["API_KEY"]
+APP_URL = os.environ.get("APP_URL", "https://markd.appfoundry.cc").rstrip("/")
+
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_CONTACT = os.environ.get("VAPID_CONTACT", "mailto:admin@example.com")
+
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "Markd <markd@appfoundry.cc>")
+if RESEND_API_KEY:
+    resend.api_key = RESEND_API_KEY
+
+if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
+    print("WARNING: VAPID keys not configured — push notifications disabled.", file=sys.stderr, flush=True)
+if not RESEND_API_KEY:
+    print("WARNING: RESEND_API_KEY not set — email verification and password reset disabled.", file=sys.stderr, flush=True)
+
+NOTIFICATIONS_LOG = "/var/log/markd/notifications.log"
 
 
 # ---------------------------------------------------------------------------
 # Auth helpers
 # ---------------------------------------------------------------------------
 
-def require_api_key(f):
-    """Accept either a valid browser session or the API key header."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if session.get("logged_in"):
-            return f(*args, **kwargs)
-        key = request.headers.get("X-API-Key") or request.args.get("api_key")
-        if key != API_KEY:
-            abort(401)
-        return f(*args, **kwargs)
-    return decorated
+def current_user_id():
+    if "_user_id" in g:
+        return g._user_id
+    return session.get("user_id")
+
+
+def current_user():
+    uid = current_user_id()
+    if uid:
+        return db.session.get(User, uid)
+    return None
 
 
 def require_session(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get("logged_in"):
-            return redirect(url_for("login"))
+        if not session.get("user_id"):
+            return redirect(url_for("login", next=request.path))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def require_api_key(f):
+    """Accept either a logged-in session or the API key header.
+
+    API key requests act as the initial admin (user_id=1) for backwards compat.
+    Per-user API keys can come later.
+    """
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if session.get("user_id"):
+            return f(*args, **kwargs)
+        key = request.headers.get("X-API-Key") or request.args.get("api_key")
+        if key != API_KEY:
+            abort(401)
+        g._user_id = 1
         return f(*args, **kwargs)
     return decorated
 
 
 # ---------------------------------------------------------------------------
-# UI routes
+# Email helpers
+# ---------------------------------------------------------------------------
+
+def _send_email(to: str, subject: str, html: str):
+    if not RESEND_API_KEY:
+        print(f"(would send email to {to}: {subject})", file=sys.stderr, flush=True)
+        return False
+    try:
+        resend.Emails.send({"from": EMAIL_FROM, "to": [to], "subject": subject, "html": html})
+        return True
+    except Exception as e:
+        print(f"Email send failed for {to}: {e}", file=sys.stderr, flush=True)
+        return False
+
+
+def make_token(user_id: int, purpose: str, hours: int) -> str:
+    token = secrets.token_urlsafe(32)
+    db.session.add(EmailToken(
+        user_id=user_id,
+        token=token,
+        purpose=purpose,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=hours),
+    ))
+    db.session.commit()
+    return token
+
+
+def consume_token(token: str, purpose: str) -> User:
+    """Return the user if the token is valid and unused, else None. Marks it used."""
+    rec = EmailToken.query.filter_by(token=token, purpose=purpose).first()
+    if not rec or rec.used_at is not None:
+        return None
+    if rec.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        return None
+    rec.used_at = datetime.now(timezone.utc)
+    user = db.session.get(User, rec.user_id)
+    db.session.commit()
+    return user
+
+
+def send_verification_email(user: User):
+    token = make_token(user.id, "verify", hours=24)
+    url = f"{APP_URL}/verify/{token}"
+    html = f"""
+        <p>Welcome to Markd.</p>
+        <p>Click below to verify your email and finish setting up your account:</p>
+        <p><a href="{url}">Verify my email</a></p>
+        <p style="color:#6b7280;font-size:0.9em">Or paste this link: {url}<br>This link expires in 24 hours.</p>
+    """
+    return _send_email(user.email, "Verify your Markd email", html)
+
+
+def send_reset_email(user: User):
+    token = make_token(user.id, "reset", hours=1)
+    url = f"{APP_URL}/reset-password/{token}"
+    html = f"""
+        <p>Someone (hopefully you) requested a password reset for your Markd account.</p>
+        <p><a href="{url}">Set a new password</a></p>
+        <p style="color:#6b7280;font-size:0.9em">Or paste this link: {url}<br>This link expires in 30 minutes.</p>
+        <p style="color:#6b7280;font-size:0.9em">If this wasn't you, just ignore this email.</p>
+    """
+    return _send_email(user.email, "Reset your Markd password", html)
+
+
+# ---------------------------------------------------------------------------
+# Static / SW
 # ---------------------------------------------------------------------------
 
 @app.route("/favicon.ico")
@@ -159,15 +316,102 @@ def service_worker():
     return resp
 
 
+# ---------------------------------------------------------------------------
+# Auth UI routes
+# ---------------------------------------------------------------------------
+
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    error = None
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        password = request.form.get("password") or ""
+        if not _valid_email(email):
+            error = "Please enter a valid email address."
+        elif len(password) < 8:
+            error = "Password must be at least 8 characters."
+        elif User.query.filter_by(email=email).first():
+            error = "An account with that email already exists."
+        else:
+            user = User(
+                email=email,
+                password_hash=generate_password_hash(password),
+                email_verified=False,
+            )
+            db.session.add(user)
+            db.session.commit()
+            send_verification_email(user)
+            return render_template("verify_pending.html", email=email)
+    return render_template("signup.html", error=error)
+
+
+@app.route("/verify/<token>")
+def verify_email(token):
+    user = consume_token(token, "verify")
+    if not user:
+        return render_template("auth_message.html", title="Link invalid",
+                               message="This verification link is invalid or has expired.",
+                               link_text="Sign up again", link_href=url_for("signup"))
+    user.email_verified = True
+    db.session.commit()
+    flash("Email verified. You can now log in.")
+    return redirect(url_for("login"))
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
+    next_url = request.args.get("next") or request.form.get("next") or url_for("index")
     if request.method == "POST":
-        if request.form.get("password") == UI_PASSWORD:
-            session["logged_in"] = True
-            return redirect(url_for("index"))
-        error = "Incorrect password."
-    return render_template("login.html", error=error)
+        email = (request.form.get("email") or "").strip().lower()
+        password = request.form.get("password") or ""
+        user = User.query.filter_by(email=email).first()
+        if user and check_password_hash(user.password_hash, password):
+            if not user.email_verified:
+                error = "Please verify your email first. Check your inbox for the link."
+            else:
+                session["user_id"] = user.id
+                return redirect(next_url)
+        else:
+            error = "Incorrect email or password."
+    flashed = get_flashed_messages()
+    return render_template("login.html", error=error, flashed=flashed, next_url=next_url)
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    sent = False
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        user = User.query.filter_by(email=email).first()
+        if user:
+            send_reset_email(user)
+        sent = True  # show same message regardless, to avoid revealing account existence
+    return render_template("forgot.html", sent=sent)
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    rec = EmailToken.query.filter_by(token=token, purpose="reset").first()
+    valid = rec and rec.used_at is None and rec.expires_at.replace(tzinfo=timezone.utc) >= datetime.now(timezone.utc)
+    if not valid:
+        return render_template("auth_message.html", title="Link invalid",
+                               message="This reset link is invalid or has expired.",
+                               link_text="Request a new one", link_href=url_for("forgot_password"))
+    error = None
+    if request.method == "POST":
+        password = request.form.get("password") or ""
+        if len(password) < 8:
+            error = "Password must be at least 8 characters."
+        else:
+            user = consume_token(token, "reset")
+            if user:
+                user.password_hash = generate_password_hash(password)
+                db.session.commit()
+                flash("Password updated. You can now log in.")
+                return redirect(url_for("login"))
+            error = "This link is no longer valid."
+    return render_template("reset.html", error=error, token=token)
 
 
 @app.route("/logout")
@@ -183,13 +427,13 @@ def index():
 
 
 # ---------------------------------------------------------------------------
-# REST API
+# Todo API
 # ---------------------------------------------------------------------------
 
 @app.route("/todos", methods=["GET"])
 @require_api_key
 def get_todos():
-    todos = Todo.query.order_by(Todo.created_at.desc()).all()
+    todos = Todo.query.filter_by(user_id=current_user_id()).order_by(Todo.created_at.desc()).all()
     return jsonify([t.to_dict() for t in todos])
 
 
@@ -219,6 +463,7 @@ def create_todo():
         return jsonify({"error": err}), 400
 
     todo = Todo(
+        user_id=current_user_id(),
         title=title, due_date=due_date, due_time=due_time,
         notes=notes, recurrence_interval=interval, recurrence_unit=unit,
         recurrence_days=days_csv,
@@ -231,7 +476,7 @@ def create_todo():
 @app.route("/todos/<int:todo_id>", methods=["PATCH"])
 @require_api_key
 def update_todo(todo_id):
-    todo = db.session.get(Todo, todo_id)
+    todo = Todo.query.filter_by(id=todo_id, user_id=current_user_id()).first()
     if todo is None:
         abort(404)
 
@@ -246,9 +491,9 @@ def update_todo(todo_id):
     if "done" in data:
         new_done = bool(data["done"])
         if new_done and not todo.done and todo.recurrence_interval and todo.recurrence_unit:
-            # Completing a recurring task — spawn the next instance
             base = todo.due_date or date.today()
             db.session.add(Todo(
+                user_id=todo.user_id,
                 title=todo.title,
                 notes=todo.notes,
                 due_time=todo.due_time,
@@ -259,8 +504,7 @@ def update_todo(todo_id):
                 spawned_from_id=todo.id,
             ))
         elif not new_done and todo.done and todo.recurrence_interval:
-            # Un-completing — delete the spawned child if it hasn't been completed yet
-            child = Todo.query.filter_by(spawned_from_id=todo.id, done=False).first()
+            child = Todo.query.filter_by(spawned_from_id=todo.id, done=False, user_id=current_user_id()).first()
             if child:
                 db.session.delete(child)
         todo.done = new_done
@@ -299,7 +543,7 @@ def update_todo(todo_id):
 @app.route("/todos/<int:todo_id>", methods=["DELETE"])
 @require_api_key
 def delete_todo(todo_id):
-    todo = db.session.get(Todo, todo_id)
+    todo = Todo.query.filter_by(id=todo_id, user_id=current_user_id()).first()
     if todo is None:
         abort(404)
     db.session.delete(todo)
@@ -310,21 +554,6 @@ def delete_todo(todo_id):
 # ---------------------------------------------------------------------------
 # Push notifications
 # ---------------------------------------------------------------------------
-
-VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
-VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
-VAPID_CONTACT = os.environ.get("VAPID_CONTACT", "mailto:admin@example.com")
-
-if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
-    import sys
-    print(
-        "WARNING: VAPID keys not configured — push notifications disabled. "
-        "Run setup.sh to generate them.",
-        file=sys.stderr, flush=True,
-    )
-
-NOTIFICATIONS_LOG = "/var/log/markd/notifications.log"
-
 
 @app.route("/push/vapid-public-key")
 @require_session
@@ -345,10 +574,14 @@ def push_subscribe():
 
     sub = PushSubscription.query.filter_by(endpoint=endpoint).first()
     if sub:
+        sub.user_id = current_user_id()
         sub.p256dh = p256dh
         sub.auth = auth
     else:
-        db.session.add(PushSubscription(endpoint=endpoint, p256dh=p256dh, auth=auth))
+        db.session.add(PushSubscription(
+            user_id=current_user_id(),
+            endpoint=endpoint, p256dh=p256dh, auth=auth,
+        ))
     db.session.commit()
     return "", 204
 
@@ -359,13 +592,13 @@ def push_unsubscribe():
     data = request.get_json(silent=True) or {}
     endpoint = data.get("endpoint")
     if endpoint:
-        PushSubscription.query.filter_by(endpoint=endpoint).delete()
+        PushSubscription.query.filter_by(endpoint=endpoint, user_id=current_user_id()).delete()
         db.session.commit()
     return "", 204
 
 
 # ---------------------------------------------------------------------------
-# Diagnostics
+# Diagnostics (per-user)
 # ---------------------------------------------------------------------------
 
 @app.route("/diagnostics")
@@ -380,7 +613,9 @@ def diagnostics():
     except PermissionError:
         log_tail = ["<permission denied reading log>"]
 
+    uid = current_user_id()
     pending = Todo.query.filter(
+        Todo.user_id == uid,
         Todo.done == False,
         Todo.notified_at == None,
         Todo.due_date != None,
@@ -388,12 +623,15 @@ def diagnostics():
     ).count()
 
     info = {
+        "user_email": current_user().email if current_user() else "(none)",
+        "user_count": User.query.count(),
         "vapid_configured": bool(VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY),
         "vapid_public_key_preview": (VAPID_PUBLIC_KEY[:30] + "…") if VAPID_PUBLIC_KEY else "(not set)",
         "vapid_contact": VAPID_CONTACT,
-        "subscription_count": PushSubscription.query.count(),
-        "todos_total": Todo.query.count(),
-        "todos_active": Todo.query.filter_by(done=False).count(),
+        "email_configured": bool(RESEND_API_KEY),
+        "subscription_count": PushSubscription.query.filter_by(user_id=uid).count(),
+        "todos_total": Todo.query.filter_by(user_id=uid).count(),
+        "todos_active": Todo.query.filter_by(user_id=uid, done=False).count(),
         "todos_pending_notification": pending,
         "server_time_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         "log_tail": log_tail,

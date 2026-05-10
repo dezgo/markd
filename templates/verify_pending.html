@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markd — Check your email</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/favicon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body class="login-page">
+  <div class="login-card">
+    <h1 class="logo">Markd</h1>
+    <h2 class="auth-heading">Check your email</h2>
+    <p class="auth-body">We sent a verification link to <strong>{{ email }}</strong>. Click the link to activate your account.</p>
+    <p class="auth-link"><a href="{{ url_for('login') }}">Back to sign in</a></p>
+  </div>
+</body>
+</html>

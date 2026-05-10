@@ -4,10 +4,33 @@ from database import db
 RECURRENCE_UNITS = {"days", "weeks", "months", "years"}
 
 
+class User(db.Model):
+    __tablename__ = "users"
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    email_verified = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class EmailToken(db.Model):
+    __tablename__ = "email_tokens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    purpose = db.Column(db.String(10), nullable=False)  # 'verify' | 'reset'
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
 class Todo(db.Model):
     __tablename__ = "todos"
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     title = db.Column(db.String(500), nullable=False)
     done = db.Column(db.Boolean, default=False, nullable=False)
     due_date = db.Column(db.Date, nullable=True)
@@ -47,6 +70,7 @@ class PushSubscription(db.Model):
     __tablename__ = "push_subscriptions"
 
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
     endpoint = db.Column(db.Text, nullable=False, unique=True)
     p256dh = db.Column(db.Text, nullable=False)
     auth = db.Column(db.Text, nullable=False)

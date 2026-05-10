@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v29';
+const VERSION = 'v30';
 
 let todos = [];
 let filter = 'active';
@@ -657,13 +657,30 @@ function startPolling() {
   pollTimer = setInterval(poll, POLL_MS);
 }
 
+// Auto-update: detect when a new SW takes over and reload on next focus
+let pendingReload = false;
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    pendingReload = true;
+  });
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-  } else {
-    poll();
-    startPolling();
+    return;
   }
+  // If a new SW took over since we last looked, reload now (unless mid-edit)
+  if (pendingReload && !isUserBusy()) {
+    location.reload();
+    return;
+  }
+  // Otherwise, kick the SW to check for updates and resume polling
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.ready.then(reg => reg.update().catch(() => {})).catch(() => {});
+  }
+  poll();
+  startPolling();
 });
 
 load();

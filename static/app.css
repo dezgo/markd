@@ -478,6 +478,13 @@ body {
   margin-top: 2rem;
 }
 
+.version-label {
+  text-align: center;
+  color: var(--border);
+  font-size: 0.7rem;
+  margin-top: 2rem;
+}
+
 /* ---- Undo toast ---- */
 
 .toast {

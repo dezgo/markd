@@ -1,5 +1,7 @@
 'use strict';
 
+const VERSION = 'v12';
+
 let todos = [];
 let filter = 'active';
 
@@ -510,6 +512,8 @@ document.querySelectorAll('.tab').forEach(btn => {
     render();
   });
 });
+
+document.getElementById('version').textContent = VERSION;
 
 load();
 setupPush();

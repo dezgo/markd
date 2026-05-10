@@ -511,6 +511,8 @@ body.is-editing #submit-btn { font-size: 1.2rem; }
   box-shadow: 0 6px 18px rgba(99,102,241,0.25);
 }
 
+.notif-banner[hidden] { display: none; }
+
 .notif-banner.is-install {
   background: linear-gradient(135deg, #4338ca, #6366f1);
 }

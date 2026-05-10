@@ -35,6 +35,9 @@
         required
         autocomplete="off"
       >
+      <button type="submit" aria-label="Add todo">＋</button>
+    </div>
+    <div class="add-details">
       <input id="new-due" type="date" title="Due date (optional)">
       <input id="new-due-time" type="time" title="Due time (optional)">
       <input id="new-recur-interval" type="number" min="1" max="99" placeholder="every" title="Repeat every N…">
@@ -44,7 +47,6 @@
         <option value="months">months</option>
         <option value="years">years</option>
       </select>
-      <button type="submit" aria-label="Add todo">＋</button>
     </div>
     <input id="new-notes" type="text" placeholder="Add a note… (optional)" maxlength="2000" autocomplete="off">
   </form>

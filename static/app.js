@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v36';
+const VERSION = 'v37';
 
 let todos = [];
 let filter = 'active';
@@ -661,7 +661,7 @@ function startPolling() {
 let pendingReload = false;
 function maybeReloadForUpdate() {
   if (!pendingReload) return;
-  if (isUserBusy()) return;          // wait until they're not mid-edit
+  if (isUserBusy()) return;
   location.reload();
 }
 if ('serviceWorker' in navigator) {
@@ -671,6 +671,24 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Belt-and-braces: explicit /version check. iOS Safari sometimes refuses
+// to honor SW lifecycle updates; if we see a server version mismatch we
+// unregister all SWs and force a hard reload.
+async function checkServerVersion() {
+  try {
+    const res = await fetch('/version?_=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const { version } = await res.json();
+    if (!version || version === VERSION) return;
+    if (isUserBusy()) { pendingReload = true; return; }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    location.reload();
+  } catch {}
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
@@ -678,7 +696,9 @@ document.addEventListener('visibilitychange', () => {
   }
   // If a new SW took over since we last looked, reload now (unless mid-edit)
   maybeReloadForUpdate();
-  if (pendingReload) return;  // reload will happen when user stops editing
+  if (pendingReload) return;
+  // Also do an explicit server-version check (covers iOS Safari)
+  checkServerVersion();
   // Otherwise, kick the SW to check for updates and resume polling
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.ready.then(reg => reg.update().catch(() => {})).catch(() => {});
@@ -690,3 +710,4 @@ document.addEventListener('visibilitychange', () => {
 load();
 setupPush();
 startPolling();
+checkServerVersion();  // also check on startup

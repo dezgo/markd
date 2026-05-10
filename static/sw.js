@@ -1,4 +1,4 @@
-const CACHE = 'markd-v36';
+const CACHE = 'markd-v37';
 const PRECACHE = [
   '/app',
   '/static/app.css',
@@ -60,6 +60,7 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' ||
       url.pathname.startsWith('/todos') ||
       url.pathname.startsWith('/push') ||
+      url.pathname === '/version' ||
       url.pathname === '/login' ||
       url.pathname === '/logout') {
     return;

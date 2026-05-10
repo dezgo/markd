@@ -352,6 +352,18 @@ def service_worker():
     return resp
 
 
+# Bumped on every release. Used by the client to detect a stale build
+# and forcibly unregister the service worker if iOS Safari refuses to update.
+APP_VERSION = "v37"
+
+
+@app.route("/version")
+def version():
+    resp = jsonify({"version": APP_VERSION})
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 # ---------------------------------------------------------------------------
 # Auth UI routes
 # ---------------------------------------------------------------------------

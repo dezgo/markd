@@ -199,7 +199,7 @@ body {
 .add-details input[type="time"]:focus { border-color: var(--accent); }
 
 .add-details input[type="number"] {
-  width: 4.5rem;
+  width: 5.5rem;
   padding: 0.55rem 0.4rem;
   border: 1px solid var(--border);
   border-radius: 8px;

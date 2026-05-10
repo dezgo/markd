@@ -1,4 +1,4 @@
-const CACHE = 'markd-v15';
+const CACHE = 'markd-v16';
 const PRECACHE = [
   '/',
   '/static/app.css',
@@ -21,7 +21,11 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('push', e => {
-  const data = e.data ? e.data.json() : {};
+  console.log('[SW] push event received', e);
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; }
+  catch (err) { console.error('[SW] failed to parse push data', err); }
+  console.log('[SW] push payload:', data);
   const title = data.title || 'Markd';
   const options = {
     body: data.body || '',
@@ -30,7 +34,11 @@ self.addEventListener('push', e => {
     tag: data.tag || 'markd',
     data: { url: '/' },
   };
-  e.waitUntil(self.registration.showNotification(title, options));
+  e.waitUntil(
+    self.registration.showNotification(title, options)
+      .then(() => console.log('[SW] showNotification resolved'))
+      .catch(err => console.error('[SW] showNotification failed', err))
+  );
 });
 
 self.addEventListener('notificationclick', e => {

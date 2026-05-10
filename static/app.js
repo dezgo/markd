@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v32';
+const VERSION = 'v33';
 
 let todos = [];
 let filter = 'active';
@@ -656,11 +656,18 @@ function startPolling() {
   pollTimer = setInterval(poll, POLL_MS);
 }
 
-// Auto-update: detect when a new SW takes over and reload on next focus
+// Auto-update: detect when a new SW takes over and reload immediately
+// (or defer until the user is no longer mid-edit / has no pending undo)
 let pendingReload = false;
+function maybeReloadForUpdate() {
+  if (!pendingReload) return;
+  if (isUserBusy()) return;          // wait until they're not mid-edit
+  location.reload();
+}
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     pendingReload = true;
+    maybeReloadForUpdate();
   });
 }
 
@@ -670,10 +677,8 @@ document.addEventListener('visibilitychange', () => {
     return;
   }
   // If a new SW took over since we last looked, reload now (unless mid-edit)
-  if (pendingReload && !isUserBusy()) {
-    location.reload();
-    return;
-  }
+  maybeReloadForUpdate();
+  if (pendingReload) return;  // reload will happen when user stops editing
   // Otherwise, kick the SW to check for updates and resume polling
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.ready.then(reg => reg.update().catch(() => {})).catch(() => {});

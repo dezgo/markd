@@ -442,6 +442,8 @@ body {
   flex-wrap: wrap;
 }
 
+.day-toggles[hidden] { display: none; }
+
 .day-toggle {
   width: 2rem;
   height: 2rem;

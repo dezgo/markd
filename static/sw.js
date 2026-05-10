@@ -1,4 +1,4 @@
-const CACHE = 'markd-v16';
+const CACHE = 'markd-v17';
 const PRECACHE = [
   '/',
   '/static/app.css',
@@ -32,6 +32,7 @@ self.addEventListener('push', e => {
     icon: '/static/icons/icon-192.png',
     badge: '/static/icons/favicon-96x96.png',
     tag: data.tag || 'markd',
+    requireInteraction: true,
     data: { url: '/' },
   };
   e.waitUntil(
@@ -55,8 +56,12 @@ self.addEventListener('notificationclick', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // Never cache API calls or login/logout
-  if (url.pathname.startsWith('/todos') || url.pathname === '/login' || url.pathname === '/logout') {
+  // Don't intercept non-GET requests (Cache API can't store them) or API/auth routes
+  if (e.request.method !== 'GET' ||
+      url.pathname.startsWith('/todos') ||
+      url.pathname.startsWith('/push') ||
+      url.pathname === '/login' ||
+      url.pathname === '/logout') {
     return;
   }
 

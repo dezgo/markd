@@ -43,7 +43,6 @@ echo "==> Installing systemd service"
 sudo cp "$DIR/deploy/$APP.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable "$APP"
-sudo systemctl restart "$APP"
 
 # ── Nginx ─────────────────────────────────────────────────────────────────────
 # Only copy the config on first install — Certbot modifies it in place for SSL
@@ -122,6 +121,10 @@ fi
 echo "==> Installing sudoers rules"
 sudo cp "$DIR/deploy/sudoers-derek-ops" /etc/sudoers.d/derek-ops
 sudo chmod 440 /etc/sudoers.d/derek-ops
+
+# ── Restart service (after .env is fully populated) ───────────────────────────
+echo "==> Restarting service"
+sudo systemctl restart "$APP"
 
 echo ""
 echo "Done."

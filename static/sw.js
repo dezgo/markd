@@ -1,4 +1,4 @@
-const CACHE = 'markd-v7';
+const CACHE = 'markd-v8';
 const PRECACHE = [
   '/',
   '/static/app.css',
@@ -45,5 +45,6 @@ self.addEventListener('fetch', e => {
     );
   }
 });
+
 
 

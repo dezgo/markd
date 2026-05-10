@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v26';
+const VERSION = 'v27';
 
 let todos = [];
 let filter = 'active';
@@ -86,11 +86,35 @@ function isDueByEndOfToday(todo) {
   return due <= endOfToday;
 }
 
+function dueDateTime(t) {
+  if (!t.due_date) return null;
+  const [y, m, d] = t.due_date.split('-').map(Number);
+  if (t.due_time) {
+    const [h, mn] = t.due_time.split(':').map(Number);
+    return new Date(Date.UTC(y, m - 1, d, h, mn));  // stored UTC
+  }
+  return new Date(y, m - 1, d);
+}
+
+function compareByDue(a, b) {
+  const da = dueDateTime(a), db = dueDateTime(b);
+  if (!da && !db) return 0;
+  if (!da) return 1;   // undated tasks sink
+  if (!db) return -1;
+  return da - db;
+}
+
 function filtered() {
-  if (filter === 'today') return todos.filter(t => !t.done && isDueByEndOfToday(t));
-  if (filter === 'active') return todos.filter(t => !t.done);
-  if (filter === 'done') return todos.filter(t => t.done);
-  return todos;
+  let result;
+  if (filter === 'today') result = todos.filter(t => !t.done && isDueByEndOfToday(t));
+  else if (filter === 'active') result = todos.filter(t => !t.done);
+  else if (filter === 'done') result = todos.filter(t => t.done);
+  else result = [...todos];
+
+  if (filter === 'active' || filter === 'today') {
+    result = [...result].sort(compareByDue);
+  }
+  return result;
 }
 
 function formatDue(isoDate, timeStr) {

@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v24';
+const VERSION = 'v25';
 
 let todos = [];
 let filter = 'active';
@@ -70,7 +70,23 @@ async function load() {
   render();
 }
 
+function isDueByEndOfToday(todo) {
+  if (!todo.due_date) return false;
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+  const [y, m, d] = todo.due_date.split('-').map(Number);
+  let due;
+  if (todo.due_time) {
+    const [h, mn] = todo.due_time.split(':').map(Number);
+    due = new Date(Date.UTC(y, m - 1, d, h, mn));  // stored UTC
+  } else {
+    due = new Date(y, m - 1, d);  // local date
+  }
+  return due <= endOfToday;
+}
+
 function filtered() {
+  if (filter === 'today') return todos.filter(t => !t.done && isDueByEndOfToday(t));
   if (filter === 'active') return todos.filter(t => !t.done);
   if (filter === 'done') return todos.filter(t => t.done);
   return todos;

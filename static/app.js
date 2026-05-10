@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v17';
+const VERSION = 'v18';
 
 let todos = [];
 let filter = 'active';
@@ -27,7 +27,10 @@ async function api(path, options = {}) {
 }
 
 async function load() {
-  todos = await api('/todos');
+  const fresh = await api('/todos');
+  // Skip re-render if nothing actually changed (avoids flicker during polling)
+  if (JSON.stringify(fresh) === JSON.stringify(todos)) return;
+  todos = fresh;
   render();
 }
 
@@ -522,5 +525,38 @@ document.querySelectorAll('.tab').forEach(btn => {
 const versionEl = document.getElementById('version');
 if (versionEl) versionEl.textContent = VERSION;
 
+// ---------------------------------------------------------------------------
+// Polling — keep the list fresh across devices
+// ---------------------------------------------------------------------------
+
+const POLL_MS = 10000;
+let pollTimer = null;
+
+function isUserBusy() {
+  return !!document.querySelector(
+    '.todo-edit-input, .todo-notes-input, .todo-recur-edit, .toast'
+  );
+}
+
+async function poll() {
+  if (document.hidden || isUserBusy() || pendingToggle || pendingDelete) return;
+  try { await load(); } catch {}
+}
+
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(poll, POLL_MS);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  } else {
+    poll();
+    startPolling();
+  }
+});
+
 load();
 setupPush();
+startPolling();

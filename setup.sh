@@ -107,7 +107,7 @@ PYEOF
     else
         echo "VAPID_PRIVATE_KEY=$VAPID_PRIV" >> "$DIR/.env"
         echo "VAPID_PUBLIC_KEY=$VAPID_PUB"   >> "$DIR/.env"
-        echo "VAPID_CONTACT=mailto:derek@watsonblinds.com.au" >> "$DIR/.env"
+        echo "VAPID_CONTACT=mailto:derekgg@gmail.com" >> "$DIR/.env"
     fi
     echo "    VAPID keys written to .env"
 else

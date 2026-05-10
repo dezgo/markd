@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v13';
+const VERSION = 'v14';
 
 let todos = [];
 let filter = 'active';
@@ -466,6 +466,7 @@ const notifBtn = document.getElementById('notif-btn');
 
 async function setupPush() {
   if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+  if (Notification.permission === 'denied') return;
 
   let reg;
   try { reg = await navigator.serviceWorker.ready; } catch { return; }
@@ -474,26 +475,31 @@ async function setupPush() {
   let { publicKey } = await api('/push/vapid-public-key').catch(() => ({}));
   if (!publicKey) return;
 
-  // If already subscribed, silently re-register with server and hide button
-  const existing = await reg.pushManager.getSubscription().catch(() => null);
-  if (existing && Notification.permission === 'granted') {
-    await api('/push/subscribe', { method: 'POST', body: JSON.stringify(existing.toJSON()) }).catch(() => {});
-    notifBtn.hidden = true;
-    return;
+  const keyBytes = urlBase64ToUint8Array(publicKey);
+
+  // If permission already granted, subscribe directly with the current key.
+  // This returns the existing sub if the key matches, or throws if it changed
+  // (e.g. VAPID keys regenerated on server) — in which case we unsubscribe
+  // the stale sub and fall through to show the bell for re-subscription.
+  if (Notification.permission === 'granted') {
+    try {
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes });
+      await api('/push/subscribe', { method: 'POST', body: JSON.stringify(sub.toJSON()) }).catch(() => {});
+      notifBtn.hidden = true;
+      return;
+    } catch {
+      const stale = await reg.pushManager.getSubscription().catch(() => null);
+      if (stale) await stale.unsubscribe().catch(() => {});
+    }
   }
 
-  if (Notification.permission === 'denied') return;
-
-  // Show the bell button — user must tap it to trigger the permission dialog
+  // Show the bell — user must tap to trigger the permission dialog
   notifBtn.hidden = false;
   notifBtn.onclick = async () => {
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') return;
     try {
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
-      });
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes });
       await api('/push/subscribe', { method: 'POST', body: JSON.stringify(sub.toJSON()) });
       notifBtn.classList.add('is-on');
       notifBtn.title = 'Notifications on';

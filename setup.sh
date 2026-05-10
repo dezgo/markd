@@ -115,13 +115,12 @@ else
 fi
 
 # ── Notification cron job ─────────────────────────────────────────────────────
-CRON_CMD="* * * * * $DIR/.venv/bin/python3 $DIR/send_notifications.py >> $LOG_DIR/notifications.log 2>&1"
-if ! crontab -l 2>/dev/null | grep -qF "send_notifications.py"; then
-    echo "==> Installing notification cron job"
-    (crontab -l 2>/dev/null; echo "$CRON_CMD") | crontab -
-else
-    echo "==> Cron job already installed"
-fi
+# Source .env directly so env vars are set before Python starts —
+# dotenv.load_dotenv() has been observed to silently fail under cron.
+CRON_CMD="* * * * * /bin/bash -c 'set -a; . $DIR/.env; set +a; $DIR/.venv/bin/python3 $DIR/send_notifications.py' >> $LOG_DIR/notifications.log 2>&1"
+# Always rewrite to pick up cron command changes between deploys
+(crontab -l 2>/dev/null | grep -vF "send_notifications.py"; echo "$CRON_CMD") | crontab -
+echo "==> Cron job installed"
 
 # ── Sudoers ───────────────────────────────────────────────────────────────────
 echo "==> Installing sudoers rules"

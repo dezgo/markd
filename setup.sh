@@ -101,8 +101,14 @@ PYEOF
     rm -f /tmp/_gen_vapid.py
     VAPID_PRIV=$(echo "$VAPID_KEYS" | cut -d' ' -f1)
     VAPID_PUB=$(echo "$VAPID_KEYS"  | cut -d' ' -f2)
-    sed -i "s|^VAPID_PRIVATE_KEY=.*|VAPID_PRIVATE_KEY=$VAPID_PRIV|" "$DIR/.env"
-    sed -i "s|^VAPID_PUBLIC_KEY=.*|VAPID_PUBLIC_KEY=$VAPID_PUB|"   "$DIR/.env"
+    if grep -q "^VAPID_PRIVATE_KEY=" "$DIR/.env"; then
+        sed -i "s|^VAPID_PRIVATE_KEY=.*|VAPID_PRIVATE_KEY=$VAPID_PRIV|" "$DIR/.env"
+        sed -i "s|^VAPID_PUBLIC_KEY=.*|VAPID_PUBLIC_KEY=$VAPID_PUB|"   "$DIR/.env"
+    else
+        echo "VAPID_PRIVATE_KEY=$VAPID_PRIV" >> "$DIR/.env"
+        echo "VAPID_PUBLIC_KEY=$VAPID_PUB"   >> "$DIR/.env"
+        echo "VAPID_CONTACT=mailto:derek@watsonblinds.com.au" >> "$DIR/.env"
+    fi
     echo "    VAPID keys written to .env"
 else
     echo "==> VAPID keys already present — skipping"

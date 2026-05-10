@@ -1,4 +1,4 @@
-const CACHE = 'markd-v18';
+const CACHE = 'markd-v19';
 const PRECACHE = [
   '/',
   '/static/app.css',
@@ -29,8 +29,8 @@ self.addEventListener('push', e => {
   const title = data.title || 'Markd';
   const options = {
     body: data.body || '',
-    icon: '/static/icons/icon-192.png',
-    badge: '/static/icons/favicon-96x96.png',
+    icon: '/static/icons/icon-192.png?v=2',
+    badge: '/static/icons/favicon-96x96.png?v=2',
     tag: data.tag || 'markd',
     requireInteraction: true,
     data: { url: '/' },

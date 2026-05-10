@@ -24,7 +24,17 @@ from database import db
 from models import Todo, PushSubscription, RECURRENCE_UNITS
 
 
-def next_due_date(base: date, interval: int, unit: str) -> date:
+def next_due_date(base: date, interval: int, unit: str, days_csv: str = None) -> date:
+    # Weekly multi-day: find next selected weekday after base
+    if unit == "weeks" and days_csv:
+        days = {int(d) for d in days_csv.split(",") if d}
+        for offset in range(1, 8):
+            candidate = base + timedelta(days=offset)
+            js_dow = (candidate.weekday() + 1) % 7  # Sun=0..Sat=6
+            if js_dow in days:
+                return candidate
+        return base + timedelta(days=7)
+
     if unit == "days":
         return base + timedelta(days=interval)
     if unit == "weeks":
@@ -45,24 +55,35 @@ def _valid_time(t: str) -> bool:
 
 
 def parse_recurrence(data: dict):
-    """Return (interval, unit) or (None, None). Validates and returns an error string on failure."""
+    """Return (interval, unit, days_csv, error). days_csv is set when unit=weeks and days specified."""
     interval = data.get("recurrence_interval")
     unit = data.get("recurrence_unit") or None
+    days = data.get("recurrence_days")
 
-    if interval is None and unit is None:
-        return None, None, None
+    if interval is None and unit is None and not days:
+        return None, None, None, None
+
+    # Multi-day weekly: implicit interval=1, days drive the schedule
+    if days and unit == "weeks":
+        try:
+            day_set = sorted({int(d) for d in str(days).split(",") if d != ""})
+        except ValueError:
+            return None, None, None, "recurrence_days must be comma-separated weekday numbers (0-6)"
+        if not day_set or any(d < 0 or d > 6 for d in day_set):
+            return None, None, None, "recurrence_days values must be 0-6 (Sun=0..Sat=6)"
+        return 1, "weeks", ",".join(str(d) for d in day_set), None
 
     try:
         interval = int(interval)
         if interval < 1:
             raise ValueError
     except (TypeError, ValueError):
-        return None, None, "recurrence_interval must be a positive integer"
+        return None, None, None, "recurrence_interval must be a positive integer"
 
     if unit not in RECURRENCE_UNITS:
-        return None, None, f"recurrence_unit must be one of {sorted(RECURRENCE_UNITS)}"
+        return None, None, None, f"recurrence_unit must be one of {sorted(RECURRENCE_UNITS)}"
 
-    return interval, unit, None
+    return interval, unit, None, None
 
 
 app = Flask(__name__)
@@ -80,6 +101,7 @@ with app.app_context():
     new_cols = {
         "recurrence_interval": "INTEGER",
         "recurrence_unit":     "VARCHAR(10)",
+        "recurrence_days":     "VARCHAR(15)",
         "due_time":            "VARCHAR(5)",
         "notes":               "TEXT",
         "spawned_from_id":     "INTEGER",
@@ -192,13 +214,14 @@ def create_todo():
 
     notes = data.get("notes") or None
 
-    interval, unit, err = parse_recurrence(data)
+    interval, unit, days_csv, err = parse_recurrence(data)
     if err:
         return jsonify({"error": err}), 400
 
     todo = Todo(
         title=title, due_date=due_date, due_time=due_time,
         notes=notes, recurrence_interval=interval, recurrence_unit=unit,
+        recurrence_days=days_csv,
     )
     db.session.add(todo)
     db.session.commit()
@@ -231,7 +254,8 @@ def update_todo(todo_id):
                 due_time=todo.due_time,
                 recurrence_interval=todo.recurrence_interval,
                 recurrence_unit=todo.recurrence_unit,
-                due_date=next_due_date(base, todo.recurrence_interval, todo.recurrence_unit),
+                recurrence_days=todo.recurrence_days,
+                due_date=next_due_date(base, todo.recurrence_interval, todo.recurrence_unit, todo.recurrence_days),
                 spawned_from_id=todo.id,
             ))
         elif not new_done and todo.done and todo.recurrence_interval:
@@ -241,12 +265,13 @@ def update_todo(todo_id):
                 db.session.delete(child)
         todo.done = new_done
 
-    if "recurrence_interval" in data or "recurrence_unit" in data:
-        interval, unit, err = parse_recurrence(data)
+    if "recurrence_interval" in data or "recurrence_unit" in data or "recurrence_days" in data:
+        interval, unit, days_csv, err = parse_recurrence(data)
         if err:
             return jsonify({"error": err}), 400
         todo.recurrence_interval = interval
         todo.recurrence_unit = unit
+        todo.recurrence_days = days_csv
 
     if "due_time" in data:
         due_time = data["due_time"] or None

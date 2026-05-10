@@ -1,4 +1,4 @@
-const CACHE = 'markd-v19';
+const CACHE = 'markd-v20';
 const PRECACHE = [
   '/',
   '/static/app.css',

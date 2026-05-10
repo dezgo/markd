@@ -249,6 +249,31 @@ body {
 
 .add-details select:focus { border-color: var(--accent); }
 
+.day-toggles {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.day-toggle {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.day-toggle.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 #new-notes {
   width: 100%;
   padding: 0.55rem 0.75rem;

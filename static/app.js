@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v19';
+const VERSION = 'v20';
 
 let todos = [];
 let filter = 'active';
@@ -14,6 +14,42 @@ const newDueTime = document.getElementById('new-due-time');
 const newNotes = document.getElementById('new-notes');
 const newRecurInterval = document.getElementById('new-recur-interval');
 const newRecurUnit = document.getElementById('new-recur-unit');
+const newDayToggles = document.getElementById('new-day-toggles');
+
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function formatRecurrence(todo) {
+  if (!todo.recurrence_interval || !todo.recurrence_unit) return null;
+  if (todo.recurrence_unit === 'weeks' && todo.recurrence_days) {
+    const labels = todo.recurrence_days.split(',').map(d => DAY_LABELS[+d]);
+    return `↻ ${labels.join(', ')}`;
+  }
+  return `↻ every ${todo.recurrence_interval} ${todo.recurrence_unit}`;
+}
+
+// Day-toggle helpers — work on any container with .day-toggle children
+function getSelectedDays(container) {
+  return [...container.querySelectorAll('.day-toggle.is-on')]
+    .map(b => +b.dataset.day).sort((a, b) => a - b);
+}
+function setSelectedDays(container, daysCsv) {
+  const set = new Set((daysCsv || '').split(',').filter(d => d !== '').map(Number));
+  container.querySelectorAll('.day-toggle').forEach(b => {
+    b.classList.toggle('is-on', set.has(+b.dataset.day));
+  });
+}
+function wireDayToggles(container) {
+  container.querySelectorAll('.day-toggle').forEach(b => {
+    b.addEventListener('click', () => b.classList.toggle('is-on'));
+  });
+}
+wireDayToggles(newDayToggles);
+
+// Show/hide day toggles when unit changes
+newRecurUnit.addEventListener('change', () => {
+  newDayToggles.hidden = newRecurUnit.value !== 'weeks';
+});
+newDayToggles.hidden = newRecurUnit.value !== 'weeks';
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -85,8 +121,9 @@ function render() {
     const dueHtml = due
       ? `<div class="todo-due${due.overdue ? ' is-overdue' : ''}">${due.overdue ? '⚠ ' : ''}${due.label}</div>`
       : '';
-    const recurHtml = todo.recurrence_interval && todo.recurrence_unit
-      ? `<span class="todo-recur" title="Tap to edit">↻ every ${todo.recurrence_interval} ${todo.recurrence_unit}</span>`
+    const recurLabel = formatRecurrence(todo);
+    const recurHtml = recurLabel
+      ? `<span class="todo-recur" title="Tap to edit">${recurLabel}</span>`
       : '';
 
     const showNotes = todo.notes || !todo.done;
@@ -255,6 +292,26 @@ function startRecurEdit(li, todo) {
   }
 
   wrap.append(numInput, ' ', unitSel);
+  // Day toggles (only used when unit is "weeks")
+  const dayWrap = document.createElement('span');
+  dayWrap.className = 'day-toggles recur-edit-days';
+  for (let i = 0; i < 7; i++) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'day-toggle';
+    b.dataset.day = i;
+    b.title = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][i];
+    b.textContent = ['S','M','T','W','T','F','S'][i];
+    dayWrap.appendChild(b);
+  }
+  wireDayToggles(dayWrap);
+  setSelectedDays(dayWrap, todo.recurrence_days);
+  dayWrap.style.display = unitSel.value === 'weeks' ? '' : 'none';
+  unitSel.addEventListener('change', () => {
+    dayWrap.style.display = unitSel.value === 'weeks' ? '' : 'none';
+  });
+  wrap.appendChild(dayWrap);
+
   recurEl.replaceWith(wrap);
   numInput.focus();
   numInput.select();
@@ -264,11 +321,18 @@ function startRecurEdit(li, todo) {
   async function save() {
     if (saved) return;
     saved = true;
-    const interval = parseInt(numInput.value, 10);
-    if (!interval || interval < 1) { cancel(); return; }
+    const days = unitSel.value === 'weeks' ? getSelectedDays(dayWrap) : [];
+    let body;
+    if (days.length > 0) {
+      body = { recurrence_unit: 'weeks', recurrence_days: days.join(',') };
+    } else {
+      const interval = parseInt(numInput.value, 10);
+      if (!interval || interval < 1) { cancel(); return; }
+      body = { recurrence_interval: interval, recurrence_unit: unitSel.value, recurrence_days: null };
+    }
     const updated = await api(`/todos/${todo.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ recurrence_interval: interval, recurrence_unit: unitSel.value }),
+      body: JSON.stringify(body),
     });
     const idx = todos.findIndex(t => t.id === todo.id);
     if (idx !== -1) todos[idx] = updated;
@@ -281,13 +345,13 @@ function startRecurEdit(li, todo) {
     const badge = document.createElement('span');
     badge.className = 'todo-recur';
     badge.title = 'Tap to edit';
-    badge.textContent = `↻ every ${todo.recurrence_interval} ${todo.recurrence_unit}`;
+    badge.textContent = formatRecurrence(todo) || '';
     badge.addEventListener('click', () => startRecurEdit(li, todo));
     wrap.replaceWith(badge);
   }
 
   function onBlur() {
-    setTimeout(() => { if (!wrap.contains(document.activeElement)) save(); }, 100);
+    setTimeout(() => { if (!wrap.contains(document.activeElement)) save(); }, 200);
   }
 
   numInput.addEventListener('keydown', e => {
@@ -433,7 +497,11 @@ addForm.addEventListener('submit', async e => {
     payload.due_time = newDueTime.value;
   }
   if (newNotes.value.trim()) payload.notes = newNotes.value.trim();
-  if (newRecurInterval.value) {
+  const selectedDays = newRecurUnit.value === 'weeks' ? getSelectedDays(newDayToggles) : [];
+  if (selectedDays.length > 0) {
+    payload.recurrence_unit = 'weeks';
+    payload.recurrence_days = selectedDays.join(',');
+  } else if (newRecurInterval.value) {
     payload.recurrence_interval = parseInt(newRecurInterval.value, 10);
     payload.recurrence_unit = newRecurUnit.value;
   }
@@ -447,6 +515,7 @@ addForm.addEventListener('submit', async e => {
   newDueTime.value = '';
   newNotes.value = '';
   newRecurInterval.value = '';
+  setSelectedDays(newDayToggles, '');
   if (filter === 'done') filter = 'active';
   document.querySelector('.tab.active').classList.remove('active');
   document.querySelector('[data-filter="active"]').classList.add('active');

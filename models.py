@@ -16,6 +16,7 @@ class Todo(db.Model):
     spawned_from_id = db.Column(db.Integer, nullable=True)
     recurrence_interval = db.Column(db.Integer, nullable=True)
     recurrence_unit = db.Column(db.String(10), nullable=True)
+    recurrence_days = db.Column(db.String(15), nullable=True)  # CSV of JS weekday nums (Sun=0..Sat=6)
     notified_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
@@ -36,6 +37,7 @@ class Todo(db.Model):
             "spawned_from_id": self.spawned_from_id,
             "recurrence_interval": self.recurrence_interval,
             "recurrence_unit": self.recurrence_unit,
+            "recurrence_days": self.recurrence_days,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }

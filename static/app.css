@@ -199,8 +199,9 @@ body {
 .add-details input[type="time"]:focus { border-color: var(--accent); }
 
 .add-details input[type="number"] {
-  width: 5.5rem;
-  padding: 0.55rem 0.4rem;
+  width: 7rem;
+  flex-shrink: 0;
+  padding: 0.55rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 0.875rem;

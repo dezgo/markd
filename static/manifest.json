@@ -2,7 +2,7 @@
   "name": "Markd",
   "short_name": "Markd",
   "description": "Clean mobile-first todo app",
-  "start_url": "/",
+  "start_url": "/app",
   "display": "standalone",
   "background_color": "#f9fafb",
   "theme_color": "#6366f1",

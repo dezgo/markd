@@ -361,7 +361,7 @@ def verify_email(token):
 @app.route("/login", methods=["GET", "POST"])
 def login():
     error = None
-    next_url = request.args.get("next") or request.form.get("next") or url_for("index")
+    next_url = request.args.get("next") or request.form.get("next") or url_for("app_home")
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
@@ -421,8 +421,15 @@ def logout():
 
 
 @app.route("/")
+def landing():
+    if session.get("user_id"):
+        return redirect(url_for("app_home"))
+    return render_template("landing.html")
+
+
+@app.route("/app")
 @require_session
-def index():
+def app_home():
     return render_template("index.html")
 
 

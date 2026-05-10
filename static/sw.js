@@ -1,6 +1,6 @@
-const CACHE = 'markd-v22';
+const CACHE = 'markd-v23';
 const PRECACHE = [
-  '/',
+  '/app',
   '/static/app.css',
   '/static/app.js',
   '/static/manifest.json',
@@ -33,7 +33,7 @@ self.addEventListener('push', e => {
     badge: '/static/icons/favicon-96x96.png?v=2',
     tag: data.tag || 'markd',
     requireInteraction: true,
-    data: { url: '/' },
+    data: { url: '/app' },
   };
   e.waitUntil(
     self.registration.showNotification(title, options)
@@ -48,7 +48,7 @@ self.addEventListener('notificationclick', e => {
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
       const hit = list.find(c => new URL(c.url).origin === self.location.origin);
       if (hit) return hit.focus();
-      return clients.openWindow('/');
+      return clients.openWindow('/app');
     })
   );
 });

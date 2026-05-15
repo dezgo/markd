@@ -18,6 +18,5 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script_stop: true
           script: |
-            bash /var/www/markd/setup.sh
+            bash /var/www/markd/deploy.sh

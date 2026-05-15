@@ -19,4 +19,7 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
-            bash /var/www/markd/deploy.sh
+            cd /var/www/markd
+            git pull --ff-only
+            .venv/bin/pip install -q -r requirements.txt
+            sudo systemctl restart markd

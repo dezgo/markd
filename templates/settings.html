@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markd — Settings</title>
+  <meta name="theme-color" content="#6366f1">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/favicon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <style>
+    .settings-main { max-width: 520px; margin: 0 auto; padding: 1rem; }
+    .settings-card {
+      background: var(--surface, #fff);
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 12px;
+      padding: 1.25rem 1.25rem 1rem;
+      margin-top: 1rem;
+    }
+    .settings-card h2 { font-size: 1rem; margin: 0 0 0.25rem; }
+    .settings-card .blurb { color: var(--muted, #6b7280); font-size: 0.85rem; margin: 0 0 1rem; line-height: 1.4; }
+    .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.5rem 0; }
+    .settings-row label { font-size: 0.92rem; }
+    .settings-row input[type="time"] {
+      font-size: 0.95rem; padding: 0.4rem 0.6rem;
+      border: 1px solid var(--border, #e5e7eb); border-radius: 6px; background: #fff;
+    }
+    .settings-row input[disabled] { opacity: 0.45; }
+    .tz-line { color: var(--muted, #6b7280); font-size: 0.8rem; margin-top: 0.5rem; }
+    .save-status { font-size: 0.8rem; color: var(--muted, #6b7280); min-height: 1.1em; margin-top: 0.5rem; }
+    .save-status.ok { color: #059669; }
+    .save-status.bad { color: #dc2626; }
+    .back-link { display: inline-block; margin-top: 1rem; color: var(--accent, #6366f1); text-decoration: none; }
+
+    /* iOS-style toggle */
+    .toggle { position: relative; display: inline-block; width: 44px; height: 26px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle .slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: #d1d5db; border-radius: 999px; transition: 0.2s;
+    }
+    .toggle .slider::before {
+      content: ""; position: absolute; height: 22px; width: 22px; left: 2px; top: 2px;
+      background: #fff; border-radius: 50%; transition: 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle input:checked + .slider { background: #6366f1; }
+    .toggle input:checked + .slider::before { transform: translateX(18px); }
+  </style>
+</head>
+<body>
+
+<header class="app-header">
+  <span class="logo">Markd</span>
+  <div class="header-actions">
+    <a href="/app" class="logout-btn" title="Back to app" aria-label="Back">←</a>
+  </div>
+</header>
+
+<main class="settings-main">
+  <h1 style="font-size: 1.2rem; margin: 0.5rem 0 0;">Settings</h1>
+
+  <section class="settings-card">
+    <h2>Daily overdue check</h2>
+    <p class="blurb">If you have anything overdue, you'll get one bundled reminder at this time each day. No overdue stuff, no notification.</p>
+
+    <div class="settings-row">
+      <label for="setting-enabled">Enabled</label>
+      <label class="toggle">
+        <input type="checkbox" id="setting-enabled" {% if settings.overdue_check_enabled %}checked{% endif %}>
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="settings-row">
+      <label for="setting-time">Time</label>
+      <input type="time" id="setting-time" value="{{ settings.overdue_check_time }}">
+    </div>
+
+    <p class="tz-line">Your timezone: <span id="setting-tz">{{ settings.timezone }}</span></p>
+    <p class="save-status" id="save-status"></p>
+  </section>
+
+  <a class="back-link" href="/app">← back to app</a>
+</main>
+
+<script>
+  const enabledEl = document.getElementById('setting-enabled');
+  const timeEl = document.getElementById('setting-time');
+  const timeWrap = timeEl;
+  const statusEl = document.getElementById('save-status');
+  const tzEl = document.getElementById('setting-tz');
+
+  function applyEnabledState() {
+    timeEl.disabled = !enabledEl.checked;
+  }
+  applyEnabledState();
+
+  let saveTimer = null;
+  function queueSave(body) {
+    statusEl.textContent = 'Saving…';
+    statusEl.className = 'save-status';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => save(body), 300);
+  }
+
+  async function save(body) {
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || res.statusText);
+      }
+      statusEl.textContent = 'Saved';
+      statusEl.className = 'save-status ok';
+      setTimeout(() => { statusEl.textContent = ''; }, 1600);
+    } catch (err) {
+      statusEl.textContent = 'Save failed: ' + err.message;
+      statusEl.className = 'save-status bad';
+    }
+  }
+
+  enabledEl.addEventListener('change', () => {
+    applyEnabledState();
+    queueSave({ overdue_check_enabled: enabledEl.checked });
+  });
+  timeEl.addEventListener('change', () => {
+    if (!timeEl.value) return;
+    queueSave({ overdue_check_time: timeEl.value });
+  });
+
+  // Keep timezone in sync silently if browser TZ has changed.
+  (async function syncTz() {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (!tz || tz === tzEl.textContent) return;
+      const res = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ timezone: tz }),
+      });
+      if (res.ok) tzEl.textContent = tz;
+    } catch {}
+  })();
+</script>
+</body>
+</html>

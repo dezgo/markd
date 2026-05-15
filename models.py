@@ -75,3 +75,27 @@ class PushSubscription(db.Model):
     p256dh = db.Column(db.Text, nullable=False)
     auth = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class UserSettings(db.Model):
+    __tablename__ = "user_settings"
+
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), primary_key=True)
+    overdue_check_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    overdue_check_time = db.Column(db.String(5), default="07:00", nullable=False)  # "HH:MM" in user's local TZ
+    timezone = db.Column(db.String(64), default="UTC", nullable=False)  # IANA name
+    last_overdue_check_date = db.Column(db.Date, nullable=True)  # last day a nag fired, in user's local TZ
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    def to_dict(self):
+        return {
+            "overdue_check_enabled": self.overdue_check_enabled,
+            "overdue_check_time": self.overdue_check_time,
+            "timezone": self.timezone,
+        }

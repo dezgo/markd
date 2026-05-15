@@ -4,6 +4,7 @@ import secrets
 import sys
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import inspect as sa_inspect, text
@@ -30,7 +31,7 @@ import resend
 load_dotenv()
 
 from database import db
-from models import EmailToken, PushSubscription, RECURRENCE_UNITS, Todo, User
+from models import EmailToken, PushSubscription, RECURRENCE_UNITS, Todo, User, UserSettings
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +355,7 @@ def service_worker():
 
 # Bumped on every release. Used by the client to detect a stale build
 # and forcibly unregister the service worker if iOS Safari refuses to update.
-APP_VERSION = "v37"
+APP_VERSION = "v38"
 
 
 @app.route("/version")
@@ -547,6 +548,11 @@ def update_todo(todo_id):
         new_done = bool(data["done"])
         if new_done and not todo.done and todo.recurrence_interval and todo.recurrence_unit:
             base = todo.due_date or date.today()
+            today = date.today()
+            nxt = next_due_date(base, todo.recurrence_interval, todo.recurrence_unit, todo.recurrence_days)
+            # Fast-forward past any overdue occurrences so the spawned instance is in the future.
+            while nxt <= today:
+                nxt = next_due_date(nxt, todo.recurrence_interval, todo.recurrence_unit, todo.recurrence_days)
             db.session.add(Todo(
                 user_id=todo.user_id,
                 title=todo.title,
@@ -555,7 +561,7 @@ def update_todo(todo_id):
                 recurrence_interval=todo.recurrence_interval,
                 recurrence_unit=todo.recurrence_unit,
                 recurrence_days=todo.recurrence_days,
-                due_date=next_due_date(base, todo.recurrence_interval, todo.recurrence_unit, todo.recurrence_days),
+                due_date=nxt,
                 spawned_from_id=todo.id,
             ))
         elif not new_done and todo.done and todo.recurrence_interval:
@@ -650,6 +656,62 @@ def push_unsubscribe():
         PushSubscription.query.filter_by(endpoint=endpoint, user_id=current_user_id()).delete()
         db.session.commit()
     return "", 204
+
+
+# ---------------------------------------------------------------------------
+# User settings (incl. daily overdue check)
+# ---------------------------------------------------------------------------
+
+def _get_or_create_settings(user_id: int) -> UserSettings:
+    s = db.session.get(UserSettings, user_id)
+    if s is None:
+        s = UserSettings(user_id=user_id)
+        db.session.add(s)
+        db.session.commit()
+    return s
+
+
+@app.route("/settings")
+@require_session
+def settings_page():
+    s = _get_or_create_settings(current_user_id())
+    return render_template("settings.html", settings=s)
+
+
+@app.route("/api/settings", methods=["GET"])
+@require_session
+def get_settings():
+    s = _get_or_create_settings(current_user_id())
+    return jsonify(s.to_dict())
+
+
+@app.route("/api/settings", methods=["PATCH"])
+@require_session
+def update_settings():
+    data = request.get_json(silent=True) or {}
+    s = _get_or_create_settings(current_user_id())
+
+    if "overdue_check_enabled" in data:
+        s.overdue_check_enabled = bool(data["overdue_check_enabled"])
+
+    if "overdue_check_time" in data:
+        t = data["overdue_check_time"]
+        if not isinstance(t, str) or not _valid_time(t):
+            return jsonify({"error": "overdue_check_time must be HH:MM"}), 400
+        s.overdue_check_time = t
+
+    if "timezone" in data:
+        tz = data["timezone"]
+        if not isinstance(tz, str) or not tz:
+            return jsonify({"error": "timezone must be a non-empty IANA name"}), 400
+        try:
+            ZoneInfo(tz)
+        except ZoneInfoNotFoundError:
+            return jsonify({"error": f"unknown timezone: {tz}"}), 400
+        s.timezone = tz
+
+    db.session.commit()
+    return jsonify(s.to_dict())
 
 
 # ---------------------------------------------------------------------------

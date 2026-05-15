@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v37';
+const VERSION = 'v38';
 
 let todos = [];
 let filter = 'active';
@@ -711,3 +711,14 @@ load();
 setupPush();
 startPolling();
 checkServerVersion();  // also check on startup
+syncTimezone();        // tell the server our IANA TZ for the daily overdue check
+
+async function syncTimezone() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!tz) return;
+    const current = await api('/api/settings');
+    if (current && current.timezone === tz) return;
+    await api('/api/settings', { method: 'PATCH', body: JSON.stringify({ timezone: tz }) });
+  } catch {}
+}

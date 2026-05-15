@@ -128,13 +128,14 @@ else
     echo "==> VAPID keys already present — skipping"
 fi
 
-# ── Notification cron job ─────────────────────────────────────────────────────
+# ── Notification cron jobs ────────────────────────────────────────────────────
 # Source .env directly so env vars are set before Python starts —
 # dotenv.load_dotenv() has been observed to silently fail under cron.
-CRON_CMD="* * * * * /bin/bash -c 'set -a; . $DIR/.env; set +a; $DIR/.venv/bin/python3 $DIR/send_notifications.py' >> $LOG_DIR/notifications.log 2>&1"
+CRON_DUE="* * * * * /bin/bash -c 'set -a; . $DIR/.env; set +a; $DIR/.venv/bin/python3 $DIR/send_notifications.py' >> $LOG_DIR/notifications.log 2>&1"
+CRON_OVERDUE="* * * * * /bin/bash -c 'set -a; . $DIR/.env; set +a; $DIR/.venv/bin/python3 $DIR/send_overdue_check.py' >> $LOG_DIR/overdue.log 2>&1"
 # Always rewrite to pick up cron command changes between deploys
-(crontab -l 2>/dev/null | grep -vF "send_notifications.py"; echo "$CRON_CMD") | crontab -
-echo "==> Cron job installed"
+(crontab -l 2>/dev/null | grep -vF "send_notifications.py" | grep -vF "send_overdue_check.py"; echo "$CRON_DUE"; echo "$CRON_OVERDUE") | crontab -
+echo "==> Cron jobs installed"
 
 # ── Sudoers ───────────────────────────────────────────────────────────────────
 echo "==> Installing sudoers rules"

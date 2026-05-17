@@ -390,7 +390,7 @@ document.addEventListener('keydown', e => {
 function makeToast(message) {
   const toast = document.createElement('div');
   toast.className = 'toast';
-  toast.innerHTML = `<span>${message}</span><button class="toast-undo">Undo</button>`;
+  toast.innerHTML = `<span>${message}</span><button class="toast-undo">Undo</button><div class="toast-progress"></div>`;
   document.body.appendChild(toast);
   return toast;
 }

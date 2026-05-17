@@ -895,7 +895,28 @@ body.form-open .fab { display: none; }
 
 .toast-undo:hover { background: rgba(255,255,255,0.1); }
 
+.toast-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: rgba(255,255,255,0.5);
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+  transform-origin: right center;
+  animation: toast-progress 4s linear forwards;
+}
+
+.toast { overflow: hidden; }
+
+@keyframes toast-progress {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
 .toast-out { animation: toast-out 0.25s ease forwards; }
+.toast-out .toast-progress { animation: none; }
 
 @keyframes toast-in {
   from { opacity: 0; transform: translateX(-50%) translateY(0.5rem); }

@@ -39,7 +39,33 @@ from models import EmailToken, PushSubscription, RECURRENCE_UNITS, Todo, User, U
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _nth_last_weekday_of_month(year: int, month: int, weekday_py: int, n: int) -> date:
+    """Return the date in (year, month) that is the nth-to-last occurrence of weekday_py.
+    weekday_py uses Python convention (Mon=0..Sun=6). n=1 means last."""
+    import calendar
+    last_day = calendar.monthrange(year, month)[1]
+    d = date(year, month, last_day)
+    while d.weekday() != weekday_py:
+        d -= timedelta(days=1)
+    d -= timedelta(days=7 * (n - 1))
+    return d
+
+
 def next_due_date(base: date, interval: int, unit: str, days_csv: str = None) -> date:
+    if unit in ("monthly-last", "monthly-2last") and days_csv:
+        js_weekday = int(days_csv.split(",")[0])
+        py_weekday = (js_weekday - 1) % 7  # JS Sun=0 -> Py Sun=6; JS Mon=1 -> Py Mon=0
+        n = 1 if unit == "monthly-last" else 2
+        y, m = base.year, base.month
+        candidate = _nth_last_weekday_of_month(y, m, py_weekday, n)
+        if candidate <= base:
+            if m == 12:
+                y, m = y + 1, 1
+            else:
+                m += 1
+            candidate = _nth_last_weekday_of_month(y, m, py_weekday, n)
+        return candidate
+
     if unit == "weeks" and days_csv:
         days = {int(d) for d in days_csv.split(",") if d}
         for offset in range(1, 8):
@@ -82,6 +108,17 @@ def parse_recurrence(data: dict):
 
     if interval is None and unit is None and not days:
         return None, None, None, None
+
+    if unit in ("monthly-last", "monthly-2last"):
+        if not days:
+            return None, None, None, f"recurrence_days (single weekday) is required for {unit}"
+        try:
+            day_list = [int(d) for d in str(days).split(",") if d != ""]
+        except ValueError:
+            return None, None, None, "recurrence_days must be a weekday number 0-6"
+        if len(day_list) != 1 or not 0 <= day_list[0] <= 6:
+            return None, None, None, "recurrence_days must be a single weekday number 0-6"
+        return None, unit, str(day_list[0]), None
 
     if days and unit == "weeks":
         try:
@@ -357,7 +394,7 @@ def send_reset_email(user: User):
 # Bumped on every release. Sole source of truth — stamped into app.js and sw.js
 # at server startup (see _versioned below) and exposed via /version for the
 # client-side staleness check.
-APP_VERSION = "v55"
+APP_VERSION = "v56"
 
 THEMES = {"indigo", "mint", "sunset", "berry", "slate"}
 

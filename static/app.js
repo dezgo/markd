@@ -20,6 +20,9 @@ const newRecurInterval = document.getElementById('new-recur-interval');
 const newRecurUnit = document.getElementById('new-recur-unit');
 const newDayToggles = document.getElementById('new-day-toggles');
 const newDayTogglesWrap = document.getElementById('new-day-toggles-wrap');
+const recurIntervalRow = document.getElementById('recur-interval-row');
+const monthlyWeekdaySelect = document.getElementById('monthly-weekday-select');
+const monthlyWeekdayWrap = document.getElementById('monthly-weekday-wrap');
 const scheduleSection = document.getElementById('schedule-section');
 const formSheet = document.getElementById('todo-form-sheet');
 const formSheetTitle = document.getElementById('form-sheet-title');
@@ -56,12 +59,19 @@ if (logoutLink) {
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function formatRecurrence(todo) {
-  if (!todo.recurrence_interval || !todo.recurrence_unit) return null;
-  if (todo.recurrence_unit === 'weeks' && todo.recurrence_days) {
+  const unit = todo.recurrence_unit;
+  if (!unit) return null;
+  if (unit === 'monthly-last' || unit === 'monthly-2last') {
+    const day = DAY_LABELS[+((todo.recurrence_days || '0').split(',')[0])];
+    const which = unit === 'monthly-last' ? 'last' : '2nd-last';
+    return `↻ ${which} ${day} of month`;
+  }
+  if (unit === 'weeks' && todo.recurrence_days) {
     const labels = todo.recurrence_days.split(',').map(d => DAY_LABELS[+d]);
     return `↻ ${labels.join(', ')}`;
   }
-  return `↻ every ${todo.recurrence_interval} ${todo.recurrence_unit}`;
+  if (!todo.recurrence_interval) return null;
+  return `↻ every ${todo.recurrence_interval} ${unit}`;
 }
 
 // Day-toggle helpers
@@ -82,10 +92,19 @@ function wireDayToggles(container) {
 }
 wireDayToggles(newDayToggles);
 
-newRecurUnit.addEventListener('change', () => {
-  newDayTogglesWrap.hidden = newRecurUnit.value !== 'weeks';
-});
-newDayTogglesWrap.hidden = newRecurUnit.value !== 'weeks';
+function syncRecurControls() {
+  const unit = newRecurUnit.value;
+  const isMonthlyWeekday = unit === 'monthly-last' || unit === 'monthly-2last';
+  newDayTogglesWrap.hidden = unit !== 'weeks';
+  monthlyWeekdayWrap.hidden = !isMonthlyWeekday;
+  // The 'every N' input is meaningless for monthly-last/2last
+  const intervalInput = recurIntervalRow.querySelector('#new-recur-interval');
+  const intervalLabel = recurIntervalRow.querySelector('.form-row-label');
+  intervalInput.hidden = isMonthlyWeekday;
+  intervalLabel.hidden = isMonthlyWeekday;
+}
+newRecurUnit.addEventListener('change', syncRecurControls);
+syncRecurControls();
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -339,7 +358,8 @@ function resetFormFields() {
   newRecurInterval.value = '';
   setSelectedDays(newDayToggles, '');
   newRecurUnit.value = 'weeks';
-  newDayTogglesWrap.hidden = true;
+  monthlyWeekdaySelect.value = '1';
+  syncRecurControls();
   setFormMode('someday');
 }
 
@@ -367,8 +387,13 @@ function populateFormFromTodo(todo) {
   newNotes.value = todo.notes || '';
   newRecurUnit.value = todo.recurrence_unit || 'weeks';
   newRecurInterval.value = todo.recurrence_interval || '';
-  newDayTogglesWrap.hidden = newRecurUnit.value !== 'weeks';
+  if (todo.recurrence_unit === 'monthly-last' || todo.recurrence_unit === 'monthly-2last') {
+    monthlyWeekdaySelect.value = (todo.recurrence_days || '1').split(',')[0];
+  } else {
+    monthlyWeekdaySelect.value = '1';
+  }
   setSelectedDays(newDayToggles, todo.recurrence_days);
+  syncRecurControls();
 
   setFormMode(isSomeday(todo) ? 'someday' : 'schedule');
 }
@@ -570,19 +595,26 @@ function buildPayload({ forUpdate }) {
       payload.due_time = null;
     }
 
-    const selectedDays = newRecurUnit.value === 'weeks' ? getSelectedDays(newDayToggles) : [];
-    if (selectedDays.length > 0) {
-      payload.recurrence_unit = 'weeks';
-      payload.recurrence_days = selectedDays.join(',');
+    const unit = newRecurUnit.value;
+    if (unit === 'monthly-last' || unit === 'monthly-2last') {
+      payload.recurrence_unit = unit;
+      payload.recurrence_days = monthlyWeekdaySelect.value;
       if (forUpdate) payload.recurrence_interval = null;
-    } else if (newRecurInterval.value) {
-      payload.recurrence_interval = parseInt(newRecurInterval.value, 10);
-      payload.recurrence_unit = newRecurUnit.value;
-      if (forUpdate) payload.recurrence_days = null;
-    } else if (forUpdate) {
-      payload.recurrence_interval = null;
-      payload.recurrence_unit = null;
-      payload.recurrence_days = null;
+    } else {
+      const selectedDays = unit === 'weeks' ? getSelectedDays(newDayToggles) : [];
+      if (selectedDays.length > 0) {
+        payload.recurrence_unit = 'weeks';
+        payload.recurrence_days = selectedDays.join(',');
+        if (forUpdate) payload.recurrence_interval = null;
+      } else if (newRecurInterval.value) {
+        payload.recurrence_interval = parseInt(newRecurInterval.value, 10);
+        payload.recurrence_unit = unit;
+        if (forUpdate) payload.recurrence_days = null;
+      } else if (forUpdate) {
+        payload.recurrence_interval = null;
+        payload.recurrence_unit = null;
+        payload.recurrence_days = null;
+      }
     }
   }
 

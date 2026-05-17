@@ -491,6 +491,13 @@ body.form-open .fab { display: none; }
 .form-row { display: flex; gap: 0.5rem; align-items: stretch; }
 .form-row input[type="number"] { width: 6rem; flex-shrink: 0; }
 .form-row select { flex: 1; }
+.form-row-label {
+  font-size: 0.95rem;
+  color: var(--muted);
+  align-self: center;
+  flex-shrink: 0;
+}
+.form-row-label[hidden] { display: none; }
 
 #schedule-section { display: flex; flex-direction: column; gap: 1.1rem; }
 #schedule-section[hidden] { display: none; }
@@ -899,6 +906,7 @@ body.form-open .fab { display: none; }
   text-align: center;
   margin: 3rem 1rem 0;
 }
+.empty-msg[hidden] { display: none; }
 .empty-msg .empty-emoji { font-size: 2.5rem; line-height: 1; margin-bottom: 0.3rem; }
 .empty-msg .empty-title {
   font-size: 1.1rem;

@@ -84,14 +84,17 @@
         <input id="new-due-time" type="time">
       </div>
       <div class="form-field">
-        <span class="form-label">Repeats every</span>
-        <div class="form-row">
+        <span class="form-label">Repeats</span>
+        <div class="form-row" id="recur-interval-row">
+          <span class="form-row-label">every</span>
           <input id="new-recur-interval" type="number" min="1" max="99" placeholder="—" inputmode="numeric" pattern="[0-9]*">
           <select id="new-recur-unit">
             <option value="days">days</option>
             <option value="weeks" selected>weeks</option>
             <option value="months">months</option>
             <option value="years">years</option>
+            <option value="monthly-last">last weekday of month</option>
+            <option value="monthly-2last">2nd-last weekday of month</option>
           </select>
         </div>
       </div>
@@ -106,6 +109,18 @@
           <button type="button" class="day-toggle" data-day="5" title="Friday">F</button>
           <button type="button" class="day-toggle" data-day="6" title="Saturday">S</button>
         </div>
+      </div>
+      <div class="form-field" id="monthly-weekday-wrap" hidden>
+        <span class="form-label">Which weekday</span>
+        <select id="monthly-weekday-select">
+          <option value="0">Sunday</option>
+          <option value="1" selected>Monday</option>
+          <option value="2">Tuesday</option>
+          <option value="3">Wednesday</option>
+          <option value="4">Thursday</option>
+          <option value="5">Friday</option>
+          <option value="6">Saturday</option>
+        </select>
       </div>
     </div>
 

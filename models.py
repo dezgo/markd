@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from database import db
 
-RECURRENCE_UNITS = {"days", "weeks", "months", "years"}
+RECURRENCE_UNITS = {"days", "weeks", "months", "years", "monthly-last", "monthly-2last"}
 
 
 class User(db.Model):
@@ -38,7 +38,7 @@ class Todo(db.Model):
     notes = db.Column(db.Text, nullable=True)
     spawned_from_id = db.Column(db.Integer, nullable=True)
     recurrence_interval = db.Column(db.Integer, nullable=True)
-    recurrence_unit = db.Column(db.String(10), nullable=True)
+    recurrence_unit = db.Column(db.String(20), nullable=True)
     recurrence_days = db.Column(db.String(15), nullable=True)  # CSV of JS weekday nums (Sun=0..Sat=6)
     notified_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)

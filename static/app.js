@@ -6,6 +6,7 @@ let todos = [];
 let filter = 'active';
 let editingId = null;
 let showUpcoming = false;
+let formMode = 'someday';  // 'someday' | 'schedule'
 const TODAY_GROUPS = new Set(['Overdue', 'Today']);
 
 const list = document.getElementById('todo-list');
@@ -18,22 +19,25 @@ const newNotes = document.getElementById('new-notes');
 const newRecurInterval = document.getElementById('new-recur-interval');
 const newRecurUnit = document.getElementById('new-recur-unit');
 const newDayToggles = document.getElementById('new-day-toggles');
-const submitBtn = document.getElementById('submit-btn');
-const cancelEditBtn = document.getElementById('cancel-edit-btn');
-const scheduleToggle = document.getElementById('schedule-toggle');
+const newDayTogglesWrap = document.getElementById('new-day-toggles-wrap');
 const scheduleSection = document.getElementById('schedule-section');
+const formSheet = document.getElementById('todo-form-sheet');
+const formSheetTitle = document.getElementById('form-sheet-title');
+const formCancelBtn = document.getElementById('form-cancel-btn');
+const formDeleteBtn = document.getElementById('form-delete-btn');
+const fab = document.getElementById('fab');
 
-function expandSchedule() {
-  scheduleSection.hidden = false;
-  scheduleToggle.hidden = true;
+function setFormMode(mode) {
+  formMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    const on = b.dataset.mode === mode;
+    b.classList.toggle('is-on', on);
+    b.setAttribute('aria-checked', String(on));
+  });
+  scheduleSection.hidden = mode !== 'schedule';
 }
-function collapseSchedule() {
-  scheduleSection.hidden = true;
-  scheduleToggle.hidden = false;
-}
-scheduleToggle.addEventListener('click', () => {
-  expandSchedule();
-  newDue.focus();
+document.querySelectorAll('.mode-btn').forEach(b => {
+  b.addEventListener('click', () => setFormMode(b.dataset.mode));
 });
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -66,9 +70,9 @@ function wireDayToggles(container) {
 wireDayToggles(newDayToggles);
 
 newRecurUnit.addEventListener('change', () => {
-  newDayToggles.hidden = newRecurUnit.value !== 'weeks';
+  newDayTogglesWrap.hidden = newRecurUnit.value !== 'weeks';
 });
-newDayToggles.hidden = newRecurUnit.value !== 'weeks';
+newDayTogglesWrap.hidden = newRecurUnit.value !== 'weeks';
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -197,7 +201,7 @@ function renderTodoItem(todo) {
   li.querySelector('.todo-check').addEventListener('click', () => toggleDone(todo));
   li.querySelector('.todo-delete').addEventListener('click', () => remove(todo));
   if (!todo.done) {
-    li.querySelector('.todo-body').addEventListener('click', () => startEditingTask(todo));
+    li.querySelector('.todo-body').addEventListener('click', () => openForm({ todo }));
   }
   return li;
 }
@@ -293,8 +297,19 @@ function escHtml(s) {
 // Edit mode — populates the top form with a task's data
 // ---------------------------------------------------------------------------
 
-function startEditingTask(todo) {
-  editingId = todo.id;
+function resetFormFields() {
+  newTitle.value = '';
+  newDue.value = '';
+  newDueTime.value = '';
+  newNotes.value = '';
+  newRecurInterval.value = '';
+  setSelectedDays(newDayToggles, '');
+  newRecurUnit.value = 'weeks';
+  newDayTogglesWrap.hidden = true;
+  setFormMode('someday');
+}
+
+function populateFormFromTodo(todo) {
   newTitle.value = todo.title;
 
   // Convert UTC date+time back to local for editing
@@ -318,48 +333,53 @@ function startEditingTask(todo) {
   newNotes.value = todo.notes || '';
   newRecurUnit.value = todo.recurrence_unit || 'weeks';
   newRecurInterval.value = todo.recurrence_interval || '';
-  newDayToggles.hidden = newRecurUnit.value !== 'weeks';
+  newDayTogglesWrap.hidden = newRecurUnit.value !== 'weeks';
   setSelectedDays(newDayToggles, todo.recurrence_days);
 
-  if (isSomeday(todo)) collapseSchedule(); else expandSchedule();
-
-  document.body.classList.add('is-editing');
-  submitBtn.textContent = '✓';
-  submitBtn.title = 'Save changes';
-  cancelEditBtn.hidden = false;
-
-  render();  // re-highlight the editing row
-  newTitle.focus();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  setFormMode(isSomeday(todo) ? 'someday' : 'schedule');
 }
 
-function cancelEditing() {
-  editingId = null;
-  newTitle.value = '';
-  newDue.value = '';
-  newDueTime.value = '';
-  newNotes.value = '';
-  newRecurInterval.value = '';
-  setSelectedDays(newDayToggles, '');
-  newRecurUnit.value = 'weeks';
-  newDayToggles.hidden = false;
-  collapseSchedule();
+function openForm({ todo = null } = {}) {
+  if (todo) {
+    editingId = todo.id;
+    populateFormFromTodo(todo);
+    formSheetTitle.textContent = 'Edit todo';
+    formDeleteBtn.hidden = false;
+  } else {
+    editingId = null;
+    resetFormFields();
+    formSheetTitle.textContent = 'New todo';
+    formDeleteBtn.hidden = true;
+  }
+  formSheet.hidden = false;
+  formSheet.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('form-open');
+  render();  // re-highlight the editing row if any
+  setTimeout(() => newTitle.focus(), 50);
+}
 
-  document.body.classList.remove('is-editing');
-  submitBtn.textContent = '＋';
-  submitBtn.title = 'Add todo';
-  cancelEditBtn.hidden = true;
+function closeForm() {
+  formSheet.hidden = true;
+  formSheet.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('form-open');
+  editingId = null;
+  resetFormFields();
   render();
 }
 
-cancelEditBtn.addEventListener('click', () => cancelEditing());
+formCancelBtn.addEventListener('click', () => closeForm());
+fab.addEventListener('click', () => openForm());
+formDeleteBtn.addEventListener('click', () => {
+  if (editingId === null) return;
+  const todo = todos.find(t => t.id === editingId);
+  closeForm();
+  if (todo) remove(todo);
+});
+
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && editingId !== null && document.activeElement !== document.body) {
-    // only cancel if focus is on the form
-    if (addForm.contains(document.activeElement)) {
-      e.preventDefault();
-      cancelEditing();
-    }
+  if (e.key === 'Escape' && !formSheet.hidden) {
+    e.preventDefault();
+    closeForm();
   }
 });
 
@@ -452,7 +472,7 @@ function commitDelete() {
 
 function remove(todo) {
   if (pendingDelete) commitDelete();
-  if (todo.id === editingId) cancelEditing();
+  if (todo.id === editingId) closeForm();
 
   todos = todos.filter(t => t.id !== todo.id);
   render();
@@ -478,42 +498,54 @@ function remove(todo) {
 function buildPayload({ forUpdate }) {
   const payload = { title: newTitle.value.trim() };
 
-  if (newDue.value && newDueTime.value) {
-    const [y, m, d] = newDue.value.split('-').map(Number);
-    const [h, min] = newDueTime.value.split(':').map(Number);
-    const local = new Date(y, m - 1, d, h, min);
-    payload.due_date = local.toISOString().slice(0, 10);
-    payload.due_time = local.toISOString().slice(11, 16);
-  } else if (newDue.value) {
-    payload.due_date = newDue.value;
-    if (forUpdate) payload.due_time = null;
-  } else if (newDueTime.value) {
-    payload.due_time = newDueTime.value;
-    if (forUpdate) payload.due_date = null;
-  } else if (forUpdate) {
-    payload.due_date = null;
-    payload.due_time = null;
+  // Someday mode: explicitly clear all scheduling fields
+  if (formMode === 'someday') {
+    if (forUpdate) {
+      payload.due_date = null;
+      payload.due_time = null;
+      payload.recurrence_interval = null;
+      payload.recurrence_unit = null;
+      payload.recurrence_days = null;
+    }
+  } else {
+    // Schedule mode — read whatever's filled in
+    if (newDue.value && newDueTime.value) {
+      const [y, m, d] = newDue.value.split('-').map(Number);
+      const [h, min] = newDueTime.value.split(':').map(Number);
+      const local = new Date(y, m - 1, d, h, min);
+      payload.due_date = local.toISOString().slice(0, 10);
+      payload.due_time = local.toISOString().slice(11, 16);
+    } else if (newDue.value) {
+      payload.due_date = newDue.value;
+      if (forUpdate) payload.due_time = null;
+    } else if (newDueTime.value) {
+      payload.due_time = newDueTime.value;
+      if (forUpdate) payload.due_date = null;
+    } else if (forUpdate) {
+      payload.due_date = null;
+      payload.due_time = null;
+    }
+
+    const selectedDays = newRecurUnit.value === 'weeks' ? getSelectedDays(newDayToggles) : [];
+    if (selectedDays.length > 0) {
+      payload.recurrence_unit = 'weeks';
+      payload.recurrence_days = selectedDays.join(',');
+      if (forUpdate) payload.recurrence_interval = null;
+    } else if (newRecurInterval.value) {
+      payload.recurrence_interval = parseInt(newRecurInterval.value, 10);
+      payload.recurrence_unit = newRecurUnit.value;
+      if (forUpdate) payload.recurrence_days = null;
+    } else if (forUpdate) {
+      payload.recurrence_interval = null;
+      payload.recurrence_unit = null;
+      payload.recurrence_days = null;
+    }
   }
 
   if (newNotes.value.trim()) {
     payload.notes = newNotes.value.trim();
   } else if (forUpdate) {
     payload.notes = null;
-  }
-
-  const selectedDays = newRecurUnit.value === 'weeks' ? getSelectedDays(newDayToggles) : [];
-  if (selectedDays.length > 0) {
-    payload.recurrence_unit = 'weeks';
-    payload.recurrence_days = selectedDays.join(',');
-    if (forUpdate) payload.recurrence_interval = null;
-  } else if (newRecurInterval.value) {
-    payload.recurrence_interval = parseInt(newRecurInterval.value, 10);
-    payload.recurrence_unit = newRecurUnit.value;
-    if (forUpdate) payload.recurrence_days = null;
-  } else if (forUpdate) {
-    payload.recurrence_interval = null;
-    payload.recurrence_unit = null;
-    payload.recurrence_days = null;
   }
 
   return payload;
@@ -531,7 +563,7 @@ addForm.addEventListener('submit', async e => {
     });
     const idx = todos.findIndex(t => t.id === editingId);
     if (idx !== -1) todos[idx] = updated;
-    cancelEditing();
+    closeForm();
     return;
   }
 
@@ -541,13 +573,6 @@ addForm.addEventListener('submit', async e => {
     body: JSON.stringify(payload),
   });
   todos.unshift(created);
-  newTitle.value = '';
-  newDue.value = '';
-  newDueTime.value = '';
-  newNotes.value = '';
-  newRecurInterval.value = '';
-  setSelectedDays(newDayToggles, '');
-  collapseSchedule();
 
   const targetFilter = isSomeday(created) ? 'someday' : 'active';
   if (filter !== targetFilter) {
@@ -555,8 +580,7 @@ addForm.addEventListener('submit', async e => {
     document.querySelector('.tab.active').classList.remove('active');
     document.querySelector(`[data-filter="${targetFilter}"]`).classList.add('active');
   }
-  render();
-  newTitle.focus();
+  closeForm();
 });
 
 // ---------------------------------------------------------------------------
@@ -668,7 +692,7 @@ const POLL_MS = 10000;
 let pollTimer = null;
 
 function isUserBusy() {
-  return editingId !== null || !!document.querySelector('.toast');
+  return !formSheet.hidden || !!document.querySelector('.toast');
 }
 
 async function poll() {

@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="theme-{{ settings.theme }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Markd — Settings</title>
   <meta name="theme-color" content="#6366f1">
-  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/favicon.svg') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons/icon-32x32.png') }}">
+  <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <style>
     .settings-main { max-width: 520px; margin: 0 auto; padding: 1rem; }
@@ -43,8 +44,28 @@
       background: #fff; border-radius: 50%; transition: 0.2s;
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
-    .toggle input:checked + .slider { background: #6366f1; }
+    .toggle input:checked + .slider { background: var(--accent); }
     .toggle input:checked + .slider::before { transform: translateX(18px); }
+
+    /* Theme picker */
+    .theme-grid { display: flex; gap: 0.65rem; flex-wrap: wrap; }
+    .theme-swatch {
+      flex: 1 1 auto;
+      min-width: 70px;
+      display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+      padding: 0.6rem 0.3rem; border: 2px solid var(--border, #e5e7eb);
+      border-radius: 10px; cursor: pointer; background: #fff;
+      transition: border-color 0.15s, transform 0.1s;
+    }
+    .theme-swatch:hover { transform: translateY(-1px); }
+    .theme-swatch.is-on { border-color: var(--accent); }
+    .theme-swatch input { position: absolute; opacity: 0; pointer-events: none; }
+    .theme-dot {
+      width: 28px; height: 28px; border-radius: 50%;
+      box-shadow: inset 0 -6px 12px rgba(0,0,0,0.12);
+    }
+    .theme-swatch-label { font-size: 0.78rem; color: var(--muted, #6b7280); font-weight: 500; }
+    .theme-swatch.is-on .theme-swatch-label { color: var(--text, #111827); }
   </style>
 </head>
 <body>
@@ -78,6 +99,28 @@
 
     <p class="tz-line">Your timezone: <span id="setting-tz">{{ settings.timezone }}</span></p>
     <p class="save-status" id="save-status"></p>
+  </section>
+
+  <section class="settings-card">
+    <h2>Theme</h2>
+    <p class="blurb">Pick an accent colour. Changes apply across the app.</p>
+
+    <div class="theme-grid" id="theme-grid">
+      {% for t, color in [
+        ('indigo', '#6366f1'),
+        ('mint',   '#10b981'),
+        ('sunset', '#f97316'),
+        ('berry',  '#db2777'),
+        ('slate',  '#475569'),
+      ] %}
+      <label class="theme-swatch{% if settings.theme == t %} is-on{% endif %}" data-theme="{{ t }}">
+        <input type="radio" name="theme" value="{{ t }}"{% if settings.theme == t %} checked{% endif %}>
+        <span class="theme-dot" style="background: {{ color }};"></span>
+        <span class="theme-swatch-label">{{ t|capitalize }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <p class="save-status" id="theme-status"></p>
   </section>
 
   <a class="back-link" href="/app">← back to app</a>
@@ -130,6 +173,35 @@
   timeEl.addEventListener('change', () => {
     if (!timeEl.value) return;
     queueSave({ overdue_check_time: timeEl.value });
+  });
+
+  // Theme picker
+  const themeGrid = document.getElementById('theme-grid');
+  const themeStatus = document.getElementById('theme-status');
+  themeGrid.addEventListener('change', async e => {
+    const radio = e.target.closest('input[name="theme"]');
+    if (!radio) return;
+    const theme = radio.value;
+    themeGrid.querySelectorAll('.theme-swatch').forEach(s => {
+      s.classList.toggle('is-on', s.dataset.theme === theme);
+    });
+    document.documentElement.className = 'theme-' + theme;
+    themeStatus.textContent = 'Saving…';
+    themeStatus.className = 'save-status';
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ theme }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+      themeStatus.textContent = 'Saved';
+      themeStatus.className = 'save-status ok';
+      setTimeout(() => { themeStatus.textContent = ''; }, 1600);
+    } catch (err) {
+      themeStatus.textContent = 'Save failed: ' + err.message;
+      themeStatus.className = 'save-status bad';
+    }
   });
 
   // Keep timezone in sync silently if browser TZ has changed.

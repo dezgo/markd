@@ -85,6 +85,7 @@ class UserSettings(db.Model):
     overdue_check_time = db.Column(db.String(5), default="07:00", nullable=False)  # "HH:MM" in user's local TZ
     timezone = db.Column(db.String(64), default="UTC", nullable=False)  # IANA name
     last_overdue_check_date = db.Column(db.Date, nullable=True)  # last day a nag fired, in user's local TZ
+    theme = db.Column(db.String(16), default="indigo", nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = db.Column(
         db.DateTime,
@@ -98,4 +99,5 @@ class UserSettings(db.Model):
             "overdue_check_enabled": self.overdue_check_enabled,
             "overdue_check_time": self.overdue_check_time,
             "timezone": self.timezone,
+            "theme": self.theme,
         }

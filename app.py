@@ -152,6 +152,9 @@ with app.app_context():
     _ensure_columns("push_subscriptions", {
         "user_id": "INTEGER",
     })
+    _ensure_columns("user_settings", {
+        "theme": "VARCHAR(16) NOT NULL DEFAULT 'indigo'",
+    })
 
     # Initial admin: convert single-password app into multi-user. Runs once.
     if User.query.count() == 0:
@@ -354,7 +357,9 @@ def send_reset_email(user: User):
 # Bumped on every release. Sole source of truth — stamped into app.js and sw.js
 # at server startup (see _versioned below) and exposed via /version for the
 # client-side staleness check.
-APP_VERSION = "v49"
+APP_VERSION = "v50"
+
+THEMES = {"indigo", "mint", "sunset", "berry", "slate"}
 
 
 def _versioned(filename: str) -> str:
@@ -510,7 +515,8 @@ def landing():
 @app.route("/app")
 @require_session
 def app_home():
-    return render_template("index.html")
+    s = _get_or_create_settings(current_user_id())
+    return render_template("index.html", theme=s.theme)
 
 
 # ---------------------------------------------------------------------------
@@ -740,6 +746,12 @@ def update_settings():
         except ZoneInfoNotFoundError:
             return jsonify({"error": f"unknown timezone: {tz}"}), 400
         s.timezone = tz
+
+    if "theme" in data:
+        theme = data["theme"]
+        if theme not in THEMES:
+            return jsonify({"error": f"theme must be one of: {', '.join(sorted(THEMES))}"}), 400
+        s.theme = theme
 
     db.session.commit()
     return jsonify(s.to_dict())

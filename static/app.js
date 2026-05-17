@@ -20,6 +20,21 @@ const newRecurUnit = document.getElementById('new-recur-unit');
 const newDayToggles = document.getElementById('new-day-toggles');
 const submitBtn = document.getElementById('submit-btn');
 const cancelEditBtn = document.getElementById('cancel-edit-btn');
+const scheduleToggle = document.getElementById('schedule-toggle');
+const scheduleSection = document.getElementById('schedule-section');
+
+function expandSchedule() {
+  scheduleSection.hidden = false;
+  scheduleToggle.hidden = true;
+}
+function collapseSchedule() {
+  scheduleSection.hidden = true;
+  scheduleToggle.hidden = false;
+}
+scheduleToggle.addEventListener('click', () => {
+  expandSchedule();
+  newDue.focus();
+});
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -106,15 +121,17 @@ function compareByDue(a, b) {
   return da - db;
 }
 
-function filtered() {
-  let result;
-  if (filter === 'done') result = todos.filter(t => t.done);
-  else result = todos.filter(t => !t.done);  // active is the default
+function isSomeday(t) {
+  return !t.due_date && !t.due_time && !t.recurrence_interval && !t.recurrence_days;
+}
 
-  if (filter !== 'done') {
-    result = [...result].sort(compareByDue);
+function filtered() {
+  if (filter === 'done') return todos.filter(t => t.done);
+  if (filter === 'someday') {
+    return todos.filter(t => !t.done && isSomeday(t))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   }
-  return result;
+  return todos.filter(t => !t.done && !isSomeday(t)).sort(compareByDue);
 }
 
 function formatDue(isoDate, timeStr) {
@@ -185,10 +202,10 @@ function renderTodoItem(todo) {
   return li;
 }
 
-const GROUP_ORDER = ['Overdue', 'Today', 'Tomorrow', 'This week', 'Later', 'No date'];
+const GROUP_ORDER = ['Overdue', 'Today', 'Tomorrow', 'This week', 'Later'];
 
 function groupForTodo(t) {
-  if (!t.due_date) return 'No date';
+  if (!t.due_date) return 'Later';  // recurring-without-date safety net
   const [y, m, d] = t.due_date.split('-').map(Number);
   let dueLocalDate;
   if (t.due_time) {
@@ -304,6 +321,8 @@ function startEditingTask(todo) {
   newDayToggles.hidden = newRecurUnit.value !== 'weeks';
   setSelectedDays(newDayToggles, todo.recurrence_days);
 
+  if (isSomeday(todo)) collapseSchedule(); else expandSchedule();
+
   document.body.classList.add('is-editing');
   submitBtn.textContent = '✓';
   submitBtn.title = 'Save changes';
@@ -324,6 +343,7 @@ function cancelEditing() {
   setSelectedDays(newDayToggles, '');
   newRecurUnit.value = 'weeks';
   newDayToggles.hidden = false;
+  collapseSchedule();
 
   document.body.classList.remove('is-editing');
   submitBtn.textContent = '＋';
@@ -527,9 +547,14 @@ addForm.addEventListener('submit', async e => {
   newNotes.value = '';
   newRecurInterval.value = '';
   setSelectedDays(newDayToggles, '');
-  if (filter === 'done') filter = 'active';
-  document.querySelector('.tab.active').classList.remove('active');
-  document.querySelector('[data-filter="active"]').classList.add('active');
+  collapseSchedule();
+
+  const targetFilter = isSomeday(created) ? 'someday' : 'active';
+  if (filter !== targetFilter) {
+    filter = targetFilter;
+    document.querySelector('.tab.active').classList.remove('active');
+    document.querySelector(`[data-filter="${targetFilter}"]`).classList.add('active');
+  }
   render();
   newTitle.focus();
 });

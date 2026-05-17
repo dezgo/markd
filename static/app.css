@@ -382,6 +382,27 @@ body {
 
 .add-row button:hover { background: var(--accent-dark); }
 
+.schedule-toggle {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, border-style 0.15s;
+}
+.schedule-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  border-style: solid;
+}
+.schedule-toggle[hidden] { display: none; }
+
+#schedule-section[hidden] { display: none; }
+#schedule-section { display: flex; flex-direction: column; gap: 0.5rem; }
+
 .cancel-edit-btn {
   background: var(--surface) !important;
   color: var(--muted) !important;

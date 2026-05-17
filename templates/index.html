@@ -41,25 +41,28 @@
       <button type="button" id="cancel-edit-btn" class="cancel-edit-btn" aria-label="Cancel edit" hidden>✕</button>
       <button type="submit" id="submit-btn" aria-label="Add todo" title="Add todo">＋</button>
     </div>
-    <div class="add-details">
-      <input id="new-due" type="date" title="Due date (optional)">
-      <input id="new-due-time" type="time" title="Due time (optional)">
-      <input id="new-recur-interval" type="number" min="1" max="99" placeholder="every" title="Repeat every N…" inputmode="numeric" pattern="[0-9]*">
-      <select id="new-recur-unit" title="Repeat unit">
-        <option value="days">days</option>
-        <option value="weeks" selected>weeks</option>
-        <option value="months">months</option>
-        <option value="years">years</option>
-      </select>
-    </div>
-    <div id="new-day-toggles" class="day-toggles" hidden>
-      <button type="button" class="day-toggle" data-day="0" title="Sunday">S</button>
-      <button type="button" class="day-toggle" data-day="1" title="Monday">M</button>
-      <button type="button" class="day-toggle" data-day="2" title="Tuesday">T</button>
-      <button type="button" class="day-toggle" data-day="3" title="Wednesday">W</button>
-      <button type="button" class="day-toggle" data-day="4" title="Thursday">T</button>
-      <button type="button" class="day-toggle" data-day="5" title="Friday">F</button>
-      <button type="button" class="day-toggle" data-day="6" title="Saturday">S</button>
+    <button type="button" id="schedule-toggle" class="schedule-toggle">＋ Schedule</button>
+    <div id="schedule-section" hidden>
+      <div class="add-details">
+        <input id="new-due" type="date" title="Due date (optional)">
+        <input id="new-due-time" type="time" title="Due time (optional)">
+        <input id="new-recur-interval" type="number" min="1" max="99" placeholder="every" title="Repeat every N…" inputmode="numeric" pattern="[0-9]*">
+        <select id="new-recur-unit" title="Repeat unit">
+          <option value="days">days</option>
+          <option value="weeks" selected>weeks</option>
+          <option value="months">months</option>
+          <option value="years">years</option>
+        </select>
+      </div>
+      <div id="new-day-toggles" class="day-toggles" hidden>
+        <button type="button" class="day-toggle" data-day="0" title="Sunday">S</button>
+        <button type="button" class="day-toggle" data-day="1" title="Monday">M</button>
+        <button type="button" class="day-toggle" data-day="2" title="Tuesday">T</button>
+        <button type="button" class="day-toggle" data-day="3" title="Wednesday">W</button>
+        <button type="button" class="day-toggle" data-day="4" title="Thursday">T</button>
+        <button type="button" class="day-toggle" data-day="5" title="Friday">F</button>
+        <button type="button" class="day-toggle" data-day="6" title="Saturday">S</button>
+      </div>
     </div>
     <input id="new-notes" type="text" placeholder="Add a note… (optional)" maxlength="2000" autocomplete="off">
   </form>
@@ -70,6 +73,7 @@
   <!-- Filter tabs -->
   <nav class="filter-tabs" aria-label="Filter todos">
     <button class="tab active" data-filter="active">Active</button>
+    <button class="tab" data-filter="someday">Someday</button>
     <button class="tab" data-filter="done">Done</button>
   </nav>
 

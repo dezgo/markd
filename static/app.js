@@ -605,6 +605,90 @@ const notifBanner = document.getElementById('notif-banner');
 
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+const isAndroid = /Android/.test(navigator.userAgent);
+const isIOSSafari = isIOS && !/CriOS|FxiOS|EdgiOS|OPiOS|YaBrowser/i.test(navigator.userAgent);
+
+// ---------------------------------------------------------------------------
+// Install guide overlay
+// ---------------------------------------------------------------------------
+
+const installGuide = document.getElementById('install-guide');
+const INSTALL_DISMISS_KEY = 'markd_install_dismissed';
+
+let deferredInstallPrompt = null;
+let installGuideShown = false;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  // If overlay isn't shown yet and we're on a mobile platform, show the native variant now
+  if (!installGuideShown && !isStandalone && !localStorage.getItem(INSTALL_DISMISS_KEY) && (isAndroid || sessionStorage.getItem('install_force'))) {
+    showInstallGuide('native');
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  hideInstallGuide();
+  localStorage.setItem(INSTALL_DISMISS_KEY, '1');
+});
+
+function showInstallGuide(variant) {
+  if (!installGuide) return;
+  installGuide.querySelectorAll('.install-variant').forEach(v => {
+    v.hidden = v.dataset.variant !== variant;
+  });
+  installGuide.hidden = false;
+  installGuide.setAttribute('aria-hidden', 'false');
+  installGuideShown = true;
+}
+
+function hideInstallGuide() {
+  if (!installGuide) return;
+  installGuide.hidden = true;
+  installGuide.setAttribute('aria-hidden', 'true');
+  installGuideShown = false;
+}
+
+if (installGuide) {
+  installGuide.addEventListener('click', async e => {
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (!action) return;
+    if (action === 'dismiss') {
+      localStorage.setItem(INSTALL_DISMISS_KEY, '1');
+      sessionStorage.removeItem('install_force');
+      hideInstallGuide();
+    } else if (action === 'install-native') {
+      if (!deferredInstallPrompt) return;
+      const evt = deferredInstallPrompt;
+      deferredInstallPrompt = null;
+      try {
+        await evt.prompt();
+        await evt.userChoice;
+      } catch {}
+      hideInstallGuide();
+    }
+  });
+}
+
+function maybeShowInstallGuide() {
+  if (!installGuide || isStandalone || installGuideShown) return;
+  const forced = sessionStorage.getItem('install_force');
+  if (!forced && localStorage.getItem(INSTALL_DISMISS_KEY)) return;
+
+  if (isIOSSafari) {
+    showInstallGuide('safari');
+  } else if (isIOS) {
+    showInstallGuide('not-safari');
+  } else if (isAndroid) {
+    // Wait briefly for beforeinstallprompt; if it fires, the listener shows 'native'. Otherwise fall back to manual.
+    setTimeout(() => {
+      if (!installGuideShown && !isStandalone) showInstallGuide('android-manual');
+    }, 1500);
+  }
+  // Desktop: don't auto-show unless beforeinstallprompt fires AND user forced it via settings
+}
+
+maybeShowInstallGuide();
 
 function hideBanner() {
   notifBanner.hidden = true;
@@ -638,7 +722,12 @@ function showEnableBanner(onEnable) {
 async function setupPush() {
   // iOS Safari (not installed) — has no Notification API at all. Push the install path.
   if (isIOS && !isStandalone) {
-    showInstallBanner();
+    // If the install overlay is showing or about to show, it covers this — don't double up.
+    if (installGuideShown || !localStorage.getItem(INSTALL_DISMISS_KEY)) {
+      hideBanner();
+    } else {
+      showInstallBanner();
+    }
     return;
   }
 

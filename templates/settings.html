@@ -47,6 +47,13 @@
     .toggle input:checked + .slider { background: var(--accent); }
     .toggle input:checked + .slider::before { transform: translateX(18px); }
 
+    .settings-cta {
+      width: 100%; padding: 0.75rem; border: none; border-radius: 10px;
+      background: var(--accent, #6366f1); color: #fff; font-size: 0.95rem;
+      font-weight: 600; cursor: pointer; transition: background 0.15s;
+    }
+    .settings-cta:hover { background: var(--accent-dark, #4f46e5); }
+
     /* Theme picker */
     .theme-grid { display: flex; gap: 0.65rem; flex-wrap: wrap; }
     .theme-swatch {
@@ -99,6 +106,12 @@
 
     <p class="tz-line">Your timezone: <span id="setting-tz">{{ settings.timezone }}</span></p>
     <p class="save-status" id="save-status"></p>
+  </section>
+
+  <section class="settings-card">
+    <h2>Install Markd</h2>
+    <p class="blurb">Already installed? Skip this. Otherwise: get the app on your home screen for faster access and notifications.</p>
+    <button type="button" id="show-install" class="settings-cta">Show install guide</button>
   </section>
 
   <section class="settings-card">
@@ -202,6 +215,13 @@
       themeStatus.textContent = 'Save failed: ' + err.message;
       themeStatus.className = 'save-status bad';
     }
+  });
+
+  // Re-show install guide
+  document.getElementById('show-install').addEventListener('click', () => {
+    localStorage.removeItem('markd_install_dismissed');
+    sessionStorage.setItem('install_force', '1');
+    window.location.href = '/app';
   });
 
   // Keep timezone in sync silently if browser TZ has changed.

@@ -377,9 +377,16 @@ formDeleteBtn.addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !formSheet.hidden) {
+  if (e.key !== 'Escape') return;
+  if (!formSheet.hidden) {
     e.preventDefault();
     closeForm();
+    return;
+  }
+  const undoBtn = document.querySelector('.toast-undo');
+  if (undoBtn) {
+    e.preventDefault();
+    undoBtn.click();
   }
 });
 

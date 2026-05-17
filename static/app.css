@@ -895,20 +895,18 @@ body.form-open .fab { display: none; }
 
 .toast-undo:hover { background: rgba(255,255,255,0.1); }
 
+.toast { overflow: hidden; position: fixed; }
+
 .toast-progress {
   position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 5px;
-  width: 100%;
-  background: var(--accent);
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
-  transform-origin: right center;
+  inset: 0;
+  background: #22c55e;
+  transform-origin: left center;
   animation: toast-progress 4s linear forwards;
+  z-index: 0;
 }
 
-.toast { overflow: hidden; }
+.toast > span, .toast-undo { position: relative; z-index: 1; }
 
 @keyframes toast-progress {
   from { transform: scaleX(1); }

@@ -357,7 +357,7 @@ def send_reset_email(user: User):
 # Bumped on every release. Sole source of truth — stamped into app.js and sw.js
 # at server startup (see _versioned below) and exposed via /version for the
 # client-side staleness check.
-APP_VERSION = "v51"
+APP_VERSION = "v52"
 
 THEMES = {"indigo", "mint", "sunset", "berry", "slate"}
 
@@ -516,7 +516,7 @@ def landing():
 @require_session
 def app_home():
     s = _get_or_create_settings(current_user_id())
-    return render_template("index.html", theme=s.theme)
+    return render_template("index.html", theme=s.theme, version=APP_VERSION)
 
 
 # ---------------------------------------------------------------------------
@@ -712,7 +712,7 @@ def _get_or_create_settings(user_id: int) -> UserSettings:
 @require_session
 def settings_page():
     s = _get_or_create_settings(current_user_id())
-    return render_template("settings.html", settings=s)
+    return render_template("settings.html", settings=s, version=APP_VERSION)
 
 
 @app.route("/api/settings", methods=["GET"])

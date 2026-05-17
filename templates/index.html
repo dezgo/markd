@@ -14,7 +14,7 @@
   <link rel="icon" type="image/png" sizes="96x96" href="{{ url_for('static', filename='icons/icon-96x96.png') }}">
   <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
   <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='icons/icon-180x180.png') }}?v=6">
-  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ version }}">
 </head>
 <body>
 
@@ -118,9 +118,12 @@
   </form>
 </section>
 
-<!-- Install guide (iOS) -->
+<!-- Install guide -->
 <section id="install-guide" class="install-guide" hidden aria-hidden="true">
   <div class="install-card">
+    <div class="install-hero">
+      <img class="install-hero-icon" src="{{ url_for('static', filename='icons/icon-192x192.png') }}?v={{ version }}" alt="Markd">
+    </div>
 
     <!-- iOS Safari variant -->
     <div class="install-variant" data-variant="safari" hidden>

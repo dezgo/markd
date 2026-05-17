@@ -888,7 +888,9 @@ body.form-open .fab { display: none; }
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: var(--bg);
+  background:
+    radial-gradient(900px 500px at 50% -100px, rgba(var(--accent-rgb), 0.22), transparent 70%),
+    linear-gradient(180deg, var(--bg) 0%, rgba(var(--accent-rgb), 0.04) 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -899,28 +901,46 @@ body.form-open .fab { display: none; }
 
 .install-card {
   width: 100%;
-  max-width: 460px;
+  max-width: 440px;
   background: var(--surface);
-  border-radius: 16px;
-  padding: 1.5rem 1.25rem 1.25rem;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+  border-radius: 20px;
+  padding: 0 1.4rem 1.4rem;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+
+.install-hero {
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem 0 1rem;
+  margin: 0 -1.4rem 0.25rem;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.14), rgba(var(--accent-rgb), 0.04));
+}
+
+.install-hero-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.16);
 }
 
 .install-title {
-  font-size: 1.35rem;
+  font-size: 1.45rem;
   font-weight: 700;
-  margin: 0 0 0.5rem;
-  letter-spacing: -0.01em;
+  margin: 0.75rem 0 0.4rem;
+  letter-spacing: -0.015em;
   text-align: center;
   color: var(--text);
+  line-height: 1.2;
 }
 
 .install-sub {
   font-size: 0.95rem;
   color: var(--muted);
   text-align: center;
-  margin: 0 0 1.5rem;
-  line-height: 1.4;
+  margin: 0 0 1.4rem;
+  line-height: 1.45;
 }
 
 .install-steps {
@@ -929,22 +949,23 @@ body.form-open .fab { display: none; }
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.7rem;
 }
 
 .install-steps li {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
-  padding: 0.85rem 0.9rem;
-  background: rgba(var(--accent-rgb), 0.06);
-  border-radius: 12px;
+  gap: 0.9rem;
+  padding: 0.95rem 1rem;
+  background: rgba(var(--accent-rgb), 0.07);
+  border: 1px solid rgba(var(--accent-rgb), 0.12);
+  border-radius: 14px;
 }
 
 .step-num {
   flex-shrink: 0;
-  width: 2rem;
-  height: 2rem;
+  width: 2.1rem;
+  height: 2.1rem;
   border-radius: 50%;
   background: var(--accent);
   color: #fff;
@@ -953,6 +974,7 @@ body.form-open .fab { display: none; }
   justify-content: center;
   font-weight: 700;
   font-size: 0.95rem;
+  box-shadow: 0 4px 10px rgba(var(--accent-rgb), 0.4);
 }
 
 .step-body {
@@ -961,13 +983,16 @@ body.form-open .fab { display: none; }
 }
 
 .step-text {
-  font-size: 0.95rem;
+  font-size: 0.98rem;
   color: var(--text);
   line-height: 1.35;
+  font-weight: 500;
 }
 
+.step-text strong { font-weight: 700; }
+
 .step-hint {
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   color: var(--muted);
   margin-top: 0.2rem;
   line-height: 1.35;
@@ -975,27 +1000,34 @@ body.form-open .fab { display: none; }
 
 .step-icon {
   flex-shrink: 0;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 10px;
+  background: #fff;
   color: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
 }
 
 .install-cta {
   display: block;
   width: 100%;
-  padding: 0.85rem;
+  padding: 0.95rem;
   background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  margin: 0 0 0.75rem;
-  transition: background 0.15s;
+  margin: 0.5rem 0 0.6rem;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  box-shadow: 0 8px 18px rgba(var(--accent-rgb), 0.4);
 }
 .install-cta:hover { background: var(--accent-dark); }
+.install-cta:active { transform: scale(0.98); }
 
 .install-dismiss {
   display: block;
@@ -1003,13 +1035,13 @@ body.form-open .fab { display: none; }
   padding: 0.7rem;
   background: transparent;
   color: var(--muted);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: 10px;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: color 0.15s;
 }
-.install-dismiss:hover { background: var(--bg); color: var(--text); }
+.install-dismiss:hover { color: var(--text); }
 
 /* ---- Undo toast ---- */
 

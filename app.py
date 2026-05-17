@@ -354,7 +354,7 @@ def send_reset_email(user: User):
 # Bumped on every release. Sole source of truth — stamped into app.js and sw.js
 # at server startup (see _versioned below) and exposed via /version for the
 # client-side staleness check.
-APP_VERSION = "v43"
+APP_VERSION = "v44"
 
 
 def _versioned(filename: str) -> str:

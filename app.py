@@ -16,6 +16,7 @@ from flask import (
     g,
     get_flashed_messages,
     jsonify,
+    make_response,
     redirect,
     render_template,
     request,
@@ -350,6 +351,28 @@ def send_reset_email(user: User):
 # Static / SW
 # ---------------------------------------------------------------------------
 
+# Bumped on every release. Sole source of truth — stamped into app.js and sw.js
+# at server startup (see _versioned below) and exposed via /version for the
+# client-side staleness check.
+APP_VERSION = "v40"
+
+
+def _versioned(filename: str) -> str:
+    with open(os.path.join(app.static_folder, filename)) as f:
+        return f.read().replace("__APP_VERSION__", APP_VERSION)
+
+
+_APP_JS = _versioned("app.js")
+_SW_JS = _versioned("sw.js")
+
+
+def _no_cache_js(body: str):
+    resp = make_response(body)
+    resp.headers["Content-Type"] = "application/javascript"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/favicon.ico")
 def favicon():
     return send_from_directory(app.static_folder, "favicon.ico")
@@ -357,14 +380,12 @@ def favicon():
 
 @app.route("/sw.js")
 def service_worker():
-    resp = send_from_directory(app.static_folder, "sw.js")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return resp
+    return _no_cache_js(_SW_JS)
 
 
-# Bumped on every release. Used by the client to detect a stale build
-# and forcibly unregister the service worker if iOS Safari refuses to update.
-APP_VERSION = "v39"
+@app.route("/app.js")
+def app_js():
+    return _no_cache_js(_APP_JS)
 
 
 @app.route("/version")

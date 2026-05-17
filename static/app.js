@@ -1,6 +1,6 @@
 'use strict';
 
-const VERSION = 'v39';
+const VERSION = '__APP_VERSION__';
 
 let todos = [];
 let filter = 'active';

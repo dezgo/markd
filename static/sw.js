@@ -1,8 +1,8 @@
-const CACHE = 'markd-v39';
+const CACHE = 'markd-__APP_VERSION__';
 const PRECACHE = [
   '/app',
   '/static/app.css',
-  '/static/app.js',
+  '/app.js',
   '/static/manifest.json',
 ];
 

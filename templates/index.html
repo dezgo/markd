@@ -127,51 +127,44 @@
 
     <!-- iOS Safari variant -->
     <div class="install-variant" data-variant="safari" hidden>
-      <h2 class="install-title">Add Markd to your home screen</h2>
-      <p class="install-sub">Takes 10 seconds — and it's the only way to get notifications on iPhone.</p>
+      <h2 class="install-title">Three taps to install</h2>
+      <p class="install-sub">Safari will hide this once you start, so remember the sequence below.</p>
 
-      <ol class="install-steps">
-        <li>
-          <span class="step-num">1</span>
-          <div class="step-body">
-            <div class="step-text">Tap the <strong>Share</strong> button</div>
-            <div class="step-hint">at the bottom of Safari</div>
-          </div>
-          <span class="step-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="32" height="32">
+      <div class="install-sequence" aria-label="Tap sequence">
+        <div class="seq-step">
+          <span class="seq-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28">
               <path d="M12 3v13"/>
               <path d="M8 7l4-4 4 4"/>
               <path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/>
             </svg>
           </span>
-        </li>
-        <li>
-          <span class="step-num">2</span>
-          <div class="step-body">
-            <div class="step-text">Scroll down and tap <strong>Add to Home Screen</strong></div>
-            <div class="step-hint">it's a bit further down the menu</div>
-          </div>
-          <span class="step-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="32" height="32">
+          <span class="seq-label">Share</span>
+        </div>
+        <span class="seq-arrow" aria-hidden="true">→</span>
+        <div class="seq-step">
+          <span class="seq-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28">
               <rect x="3" y="3" width="18" height="18" rx="4"/>
               <path d="M12 8v8"/><path d="M8 12h8"/>
             </svg>
           </span>
-        </li>
-        <li>
-          <span class="step-num">3</span>
-          <div class="step-body">
-            <div class="step-text">Tap <strong>Add</strong> in the top corner</div>
-            <div class="step-hint">that's it — open Markd from your home screen</div>
-          </div>
-          <span class="step-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="32" height="32">
+          <span class="seq-label">Add to<br>Home Screen</span>
+        </div>
+        <span class="seq-arrow" aria-hidden="true">→</span>
+        <div class="seq-step">
+          <span class="seq-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
           </span>
-        </li>
-      </ol>
+          <span class="seq-label">Add</span>
+        </div>
+      </div>
 
+      <p class="install-note">The Share button is at the bottom of Safari.<br>If you lose your spot, you can re-open this guide from Settings.</p>
+
+      <button type="button" class="install-cta" data-action="dismiss">Got it, I'm ready</button>
       <button type="button" class="install-dismiss" data-action="dismiss">I'll do this later</button>
     </div>
 

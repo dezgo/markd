@@ -114,6 +114,15 @@ _default_db = "sqlite:////var/www/markd/markd.db"
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", _default_db)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+# Persistent login: iOS kills the PWA's WebKit process aggressively, which drops
+# any non-permanent (browser-session) cookie. A server-set Max-Age cookie survives.
+app.config.update(
+    PERMANENT_SESSION_LIFETIME=timedelta(days=90),
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
+
 db.init_app(app)
 
 
@@ -355,7 +364,7 @@ def service_worker():
 
 # Bumped on every release. Used by the client to detect a stale build
 # and forcibly unregister the service worker if iOS Safari refuses to update.
-APP_VERSION = "v38"
+APP_VERSION = "v39"
 
 
 @app.route("/version")
@@ -419,6 +428,7 @@ def login():
             if not user.email_verified:
                 error = "Please verify your email first. Check your inbox for the link."
             else:
+                session.permanent = True
                 session["user_id"] = user.id
                 return redirect(next_url)
         else:

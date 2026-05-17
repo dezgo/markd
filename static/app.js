@@ -40,6 +40,19 @@ document.querySelectorAll('.mode-btn').forEach(b => {
   b.addEventListener('click', () => setFormMode(b.dataset.mode));
 });
 
+function autoExpandNotes() {
+  newNotes.style.height = 'auto';
+  newNotes.style.height = newNotes.scrollHeight + 'px';
+}
+newNotes.addEventListener('input', autoExpandNotes);
+
+const logoutLink = document.getElementById('logout-link');
+if (logoutLink) {
+  logoutLink.addEventListener('click', e => {
+    if (!window.confirm('Sign out of Markd?')) e.preventDefault();
+  });
+}
+
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function formatRecurrence(todo) {
@@ -177,21 +190,28 @@ function renderTodoItem(todo) {
     ? `<div class="todo-due${due.overdue ? ' is-overdue' : ''}">${due.overdue ? '⚠ ' : ''}${due.label}</div>`
     : (todo.done ? '' : `<div class="todo-due is-empty">+ due</div>`);
   const recurLabel = formatRecurrence(todo);
-  const recurHtml = recurLabel
-    ? `<span class="todo-recur">${recurLabel}</span>`
-    : (todo.done ? '' : `<span class="todo-recur is-empty">+ repeat</span>`);
+  const recurHtml = recurLabel ? `<span class="todo-recur">${recurLabel}</span>` : '';
 
   const showNotes = todo.notes || !todo.done;
   const notesHtml = showNotes
     ? `<div class="todo-notes${todo.notes ? '' : ' is-empty'}">${todo.notes ? escHtml(todo.notes) : 'Add note…'}</div>`
     : '';
 
+  const editHint = todo.done ? '' : `
+    <span class="todo-edit-hint" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14">
+        <path d="M12 20h9"/>
+        <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+      </svg>
+    </span>
+  `;
+
   li.innerHTML = `
     <button class="todo-check" aria-label="${todo.done ? 'Mark incomplete' : 'Mark complete'}">
       <span class="todo-check-inner"></span>
     </button>
     <div class="todo-body" title="${todo.done ? '' : 'Tap to edit'}">
-      <div class="todo-title">${escHtml(todo.title)}</div>
+      <div class="todo-title">${escHtml(todo.title)}${editHint}</div>
       ${notesHtml}
       <div class="todo-meta">${dueHtml}${recurHtml}</div>
     </div>
@@ -233,7 +253,15 @@ function render() {
   list.innerHTML = '';
 
   if (filter !== 'active') {
-    emptyMsg.hidden = visible.length > 0;
+    if (visible.length === 0) {
+      const msg = filter === 'someday'
+        ? `<span class="empty-emoji" aria-hidden="true">📋</span><span class="empty-title">No someday items yet</span><span class="empty-sub">Add things you'd like to get to eventually.</span>`
+        : `<span class="empty-emoji" aria-hidden="true">✓</span><span class="empty-title">Nothing finished yet</span><span class="empty-sub">Done tasks will show up here.</span>`;
+      emptyMsg.innerHTML = msg;
+      emptyMsg.hidden = false;
+    } else {
+      emptyMsg.hidden = true;
+    }
     visible.forEach(t => list.appendChild(renderTodoItem(t)));
     return;
   }
@@ -261,6 +289,11 @@ function render() {
 
   // Empty state — only when default view (today) has nothing AND no upcoming hidden
   if (renderedItems === 0 && upcomingCount === 0) {
+    emptyMsg.innerHTML = `
+      <span class="empty-emoji" aria-hidden="true">🎉</span>
+      <span class="empty-title">All caught up!</span>
+      <span class="empty-sub">Nothing on your plate today.</span>
+    `;
     emptyMsg.hidden = false;
   } else {
     emptyMsg.hidden = true;
@@ -302,6 +335,7 @@ function resetFormFields() {
   newDue.value = '';
   newDueTime.value = '';
   newNotes.value = '';
+  newNotes.style.height = '';
   newRecurInterval.value = '';
   setSelectedDays(newDayToggles, '');
   newRecurUnit.value = 'weeks';
@@ -355,7 +389,10 @@ function openForm({ todo = null } = {}) {
   formSheet.setAttribute('aria-hidden', 'false');
   document.body.classList.add('form-open');
   render();  // re-highlight the editing row if any
-  setTimeout(() => newTitle.focus(), 50);
+  setTimeout(() => {
+    if (!editingId) newTitle.focus();
+    autoExpandNotes();
+  }, 50);
 }
 
 function closeForm() {

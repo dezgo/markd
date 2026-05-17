@@ -430,6 +430,20 @@ body.form-open .fab { display: none; }
 .form-icon-btn.is-primary { color: var(--accent); font-size: 1.5rem; font-weight: 700; }
 .form-icon-btn.is-primary:hover { background: rgba(var(--accent-rgb), 0.1); color: var(--accent-dark); }
 
+.form-text-btn {
+  background: transparent;
+  border: none;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, color 0.15s;
+}
+.form-text-btn.is-primary { color: var(--accent); }
+.form-text-btn.is-primary:hover { background: rgba(var(--accent-rgb), 0.1); color: var(--accent-dark); }
+
 .form-sheet-body {
   flex: 1;
   overflow-y: auto;
@@ -753,6 +767,16 @@ body.form-open .fab { display: none; }
   transition: color 0.15s, text-decoration 0.15s;
 }
 
+.todo-edit-hint {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.4rem;
+  color: var(--muted);
+  opacity: 0.5;
+  vertical-align: -2px;
+}
+.todo-body:hover .todo-edit-hint { opacity: 0.85; color: var(--accent); }
+
 .todo-item.is-done .todo-title {
   color: var(--done-text);
   text-decoration: line-through;
@@ -868,10 +892,23 @@ body.form-open .fab { display: none; }
 .todo-delete:hover { color: var(--danger); background: #fef2f2; }
 
 .empty-msg {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
   text-align: center;
+  margin: 3rem 1rem 0;
+}
+.empty-msg .empty-emoji { font-size: 2.5rem; line-height: 1; margin-bottom: 0.3rem; }
+.empty-msg .empty-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.empty-msg .empty-sub {
+  font-size: 0.88rem;
   color: var(--muted);
-  font-size: 0.95rem;
-  margin-top: 2rem;
+  line-height: 1.4;
 }
 
 .version-label {

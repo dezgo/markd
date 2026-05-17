@@ -127,70 +127,31 @@
 
     <!-- iOS Safari variant -->
     <div class="install-variant" data-variant="safari" hidden>
-      <h2 class="install-title">Three taps to install</h2>
-      <p class="install-sub">Safari will hide this once you start, so remember the sequence below.</p>
+      <h2 class="install-title">Install Markd</h2>
+      <p class="install-instruction">
+        In Safari, tap <strong>Share</strong> → <strong>Add to Home Screen</strong> → <strong>Add</strong>
+      </p>
 
-      <div class="install-sequence" aria-label="Tap sequence">
-        <div class="seq-step">
-          <span class="seq-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28">
-              <path d="M12 3v13"/>
-              <path d="M8 7l4-4 4 4"/>
-              <path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/>
-            </svg>
-          </span>
-          <span class="seq-label">Share</span>
-        </div>
-        <span class="seq-arrow" aria-hidden="true">→</span>
-        <div class="seq-step">
-          <span class="seq-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28">
-              <rect x="3" y="3" width="18" height="18" rx="4"/>
-              <path d="M12 8v8"/><path d="M8 12h8"/>
-            </svg>
-          </span>
-          <span class="seq-label">Add to<br>Home Screen</span>
-        </div>
-        <span class="seq-arrow" aria-hidden="true">→</span>
-        <div class="seq-step">
-          <span class="seq-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-          </span>
-          <span class="seq-label">Add</span>
-        </div>
+      <div class="install-arrow install-arrow-down" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="48" height="48">
+          <line x1="12" y1="4" x2="12" y2="20"/>
+          <polyline points="6 14 12 20 18 14"/>
+        </svg>
+        <span class="install-arrow-label">Share is at the bottom of Safari</span>
       </div>
 
-      <p class="install-note">The Share button is at the bottom of Safari.<br>If you lose your spot, you can re-open this guide from Settings.</p>
-
-      <button type="button" class="install-cta" data-action="dismiss">Got it, I'm ready</button>
-      <button type="button" class="install-dismiss" data-action="dismiss">I'll do this later</button>
+      <button type="button" class="install-cta" data-action="dismiss">Got it</button>
+      <button type="button" class="install-dismiss" data-action="dismiss">Later</button>
     </div>
 
     <!-- iOS non-Safari variant -->
     <div class="install-variant" data-variant="not-safari" hidden>
-      <h2 class="install-title">Open Markd in Safari</h2>
-      <p class="install-sub">iPhone only lets you install web apps from Safari, not other browsers.</p>
+      <h2 class="install-title">Open in Safari first</h2>
+      <p class="install-instruction">
+        iPhone only installs apps from Safari. Open your browser menu → <strong>Open in Safari</strong>, then come back here.
+      </p>
 
-      <ol class="install-steps">
-        <li>
-          <span class="step-num">1</span>
-          <div class="step-body">
-            <div class="step-text">Tap the menu in this browser</div>
-            <div class="step-hint">three dots or three lines</div>
-          </div>
-        </li>
-        <li>
-          <span class="step-num">2</span>
-          <div class="step-body">
-            <div class="step-text">Choose <strong>Open in Safari</strong></div>
-            <div class="step-hint">then come back here to finish installing</div>
-          </div>
-        </li>
-      </ol>
-
-      <button type="button" class="install-dismiss" data-action="dismiss">Got it</button>
+      <button type="button" class="install-cta" data-action="dismiss">Got it</button>
     </div>
 
     <!-- Native install (Android Chrome, desktop Chrome/Edge) -->
@@ -204,27 +165,21 @@
 
     <!-- Android fallback if no prompt event fires -->
     <div class="install-variant" data-variant="android-manual" hidden>
-      <h2 class="install-title">Add Markd to your home screen</h2>
-      <p class="install-sub">It's a couple of taps from your browser menu.</p>
+      <div class="install-arrow install-arrow-up" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="48" height="48">
+          <polyline points="6 10 12 4 18 10"/>
+          <line x1="12" y1="4" x2="12" y2="20"/>
+        </svg>
+        <span class="install-arrow-label">Menu is at the top of your browser</span>
+      </div>
 
-      <ol class="install-steps">
-        <li>
-          <span class="step-num">1</span>
-          <div class="step-body">
-            <div class="step-text">Tap the menu <strong>⋮</strong></div>
-            <div class="step-hint">top-right corner of your browser</div>
-          </div>
-        </li>
-        <li>
-          <span class="step-num">2</span>
-          <div class="step-body">
-            <div class="step-text">Choose <strong>Install app</strong> or <strong>Add to Home screen</strong></div>
-            <div class="step-hint">wording depends on your browser</div>
-          </div>
-        </li>
-      </ol>
+      <h2 class="install-title">Install Markd</h2>
+      <p class="install-instruction">
+        Tap <strong>⋮</strong> in your browser → <strong>Install app</strong> (or <strong>Add to Home screen</strong>)
+      </p>
 
-      <button type="button" class="install-dismiss" data-action="dismiss">I'll do this later</button>
+      <button type="button" class="install-cta" data-action="dismiss">Got it</button>
+      <button type="button" class="install-dismiss" data-action="dismiss">Later</button>
     </div>
 
   </div>

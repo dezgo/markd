@@ -72,6 +72,8 @@ def _send_to_user(user_id, todos, now_utc):
                 data=payload,
                 vapid_private_key=VAPID_PRIVATE_KEY,
                 vapid_claims={"sub": VAPID_CONTACT},
+                ttl=86400,  # 24h: FCM/APNs stores & forwards if device is asleep/offline
+                headers={"Urgency": "high"},  # allowed to wake the device from Doze
             )
             sent_ok += 1
         except WebPushException as exc:
@@ -120,8 +122,12 @@ def run():
 
         for user_id, todos in by_user.items():
             sent_ok, total = _send_to_user(user_id, todos, now_utc)
-            for t in todos:
-                t.notified_at = now_utc
+            # Only mark notified if we actually delivered, or there are no subs to
+            # deliver to (nothing to retry). A transient failure (subs exist but all
+            # failed) is left unmarked so the next tick retries.
+            if sent_ok > 0 or total == 0:
+                for t in todos:
+                    t.notified_at = now_utc
             titles = ", ".join(f"'{t.title}'" for t in todos)
             log(f"  user {user_id}: {len(todos)} todo(s) [{titles}] -> {sent_ok}/{total} sub(s)")
 

@@ -13,13 +13,13 @@ Server config files for reference. Copy to the correct locations on the server.
 ```bash
 # On do-personal — run setup.sh from anywhere, it clones the repo itself
 bash <(ssh do-personal cat /dev/stdin) << 'EOF'
-curl -sL https://raw.githubusercontent.com/dezgo/markd/main/setup.sh | bash
+curl -sL https://raw.githubusercontent.com/dezgo/markd/main/Web/setup.sh | bash
 EOF
 
 # Or: clone manually then run
 ssh do-personal
 git clone git@github.com:dezgo/markd.git /var/www/markd
-bash /var/www/markd/setup.sh
+bash /var/www/markd/Web/setup.sh
 ```
 
 `setup.sh` handles everything. On a fresh server it will:
@@ -36,10 +36,20 @@ bash /var/www/markd/setup.sh
 
 ```bash
 ssh do-personal
-bash /var/www/markd/setup.sh
+bash /var/www/markd/Web/setup.sh
 ```
 
 That's it — pulls latest, reinstalls deps, restarts the service.
+
+## Note on the Web/ restructure (May 2026)
+
+The repo used to be Python files at the root; now everything web-app related
+lives under `Web/`. If you're running `setup.sh` against a server that was
+provisioned **before** that restructure, the script will detect and migrate
+the stale `/var/www/markd/.env`, `/var/www/markd/markd.db`, and
+`/var/www/markd/.venv` into `Web/` automatically. It also patches the live
+Nginx static `alias` in place (Certbot owns that file, so we can't just
+overwrite it). No manual steps required.
 
 ## SSL (first install only)
 

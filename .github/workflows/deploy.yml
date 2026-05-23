@@ -21,5 +21,5 @@ jobs:
           script: |
             cd /var/www/markd
             git pull --ff-only
-            .venv/bin/pip install -q -r requirements.txt
+            Web/.venv/bin/pip install -q -r Web/requirements.txt
             sudo systemctl restart markd

@@ -148,7 +148,7 @@ def parse_recurrence(data: dict):
 
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
-_default_db = "sqlite:////var/www/markd/markd.db"
+_default_db = "sqlite:///" + os.path.join(os.path.dirname(os.path.abspath(__file__)), "markd.db")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", _default_db)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 

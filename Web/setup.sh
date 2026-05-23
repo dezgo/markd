@@ -2,7 +2,8 @@
 set -euo pipefail
 
 APP=markd
-DIR=/var/www/markd
+DIR=/var/www/markd          # repo root (git operations target this)
+APP_DIR=$DIR/Web            # web app subdir (venv, deps, .env, deploy/ live here)
 REPO=git@github.com:dezgo/markd.git
 LOG_DIR=/var/log/markd
 DOMAIN=markd.appfoundry.cc
@@ -19,26 +20,26 @@ else
 fi
 
 # ── Python venv ───────────────────────────────────────────────────────────────
-if [ ! -d "$DIR/.venv" ]; then
+if [ ! -d "$APP_DIR/.venv" ]; then
     echo "==> Creating venv"
-    python3 -m venv "$DIR/.venv"
+    python3 -m venv "$APP_DIR/.venv"
 fi
 
 echo "==> Installing dependencies"
-"$DIR/.venv/bin/pip" install -q -r "$DIR/requirements.txt"
+"$APP_DIR/.venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
 
 # ── .env ──────────────────────────────────────────────────────────────────────
-if [ ! -f "$DIR/.env" ]; then
+if [ ! -f "$APP_DIR/.env" ]; then
     echo "==> Copying .env.example — fill in real values before starting the service"
-    cp "$DIR/.env.example" "$DIR/.env"
+    cp "$APP_DIR/.env.example" "$APP_DIR/.env"
 fi
 
 # Append any newly-introduced env vars that aren't in the existing .env
 ensure_env() {
     local key="$1"
     local default="$2"
-    if ! grep -q "^${key}=" "$DIR/.env"; then
-        echo "${key}=${default}" >> "$DIR/.env"
+    if ! grep -q "^${key}=" "$APP_DIR/.env"; then
+        echo "${key}=${default}" >> "$APP_DIR/.env"
         echo "    added ${key}= to .env (set a real value)"
     fi
 }
@@ -54,7 +55,7 @@ sudo chown derek:www-data "$LOG_DIR"
 
 # ── Systemd service ───────────────────────────────────────────────────────────
 echo "==> Installing systemd service"
-sudo cp "$DIR/deploy/$APP.service" /etc/systemd/system/
+sudo cp "$APP_DIR/deploy/$APP.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable "$APP"
 
@@ -63,7 +64,7 @@ sudo systemctl enable "$APP"
 # and we don't want to overwrite those changes on every deploy.
 if [ ! -f /etc/nginx/sites-available/"$APP" ]; then
     echo "==> Installing Nginx config (first install)"
-    sudo cp "$DIR/deploy/nginx-$APP.conf" /etc/nginx/sites-available/"$APP"
+    sudo cp "$APP_DIR/deploy/nginx-$APP.conf" /etc/nginx/sites-available/"$APP"
 else
     echo "==> Nginx config already exists — skipping (Certbot owns it)"
 fi
@@ -76,7 +77,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 
 # ── VAPID keys ────────────────────────────────────────────────────────────────
-if ! grep -q "^VAPID_PRIVATE_KEY=.\+" "$DIR/.env" 2>/dev/null; then
+if ! grep -q "^VAPID_PRIVATE_KEY=.\+" "$APP_DIR/.env" 2>/dev/null; then
     echo "==> Generating VAPID keys"
     cat > /tmp/_gen_vapid.py << 'PYEOF'
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -111,17 +112,17 @@ except (ValueError, AttributeError):
 pub = base64.urlsafe_b64encode(pub_bytes).decode().rstrip('=')
 print(priv, pub)
 PYEOF
-    VAPID_KEYS=$("$DIR/.venv/bin/python3" /tmp/_gen_vapid.py)
+    VAPID_KEYS=$("$APP_DIR/.venv/bin/python3" /tmp/_gen_vapid.py)
     rm -f /tmp/_gen_vapid.py
     VAPID_PRIV=$(echo "$VAPID_KEYS" | cut -d' ' -f1)
     VAPID_PUB=$(echo "$VAPID_KEYS"  | cut -d' ' -f2)
-    if grep -q "^VAPID_PRIVATE_KEY=" "$DIR/.env"; then
-        sed -i "s|^VAPID_PRIVATE_KEY=.*|VAPID_PRIVATE_KEY=$VAPID_PRIV|" "$DIR/.env"
-        sed -i "s|^VAPID_PUBLIC_KEY=.*|VAPID_PUBLIC_KEY=$VAPID_PUB|"   "$DIR/.env"
+    if grep -q "^VAPID_PRIVATE_KEY=" "$APP_DIR/.env"; then
+        sed -i "s|^VAPID_PRIVATE_KEY=.*|VAPID_PRIVATE_KEY=$VAPID_PRIV|" "$APP_DIR/.env"
+        sed -i "s|^VAPID_PUBLIC_KEY=.*|VAPID_PUBLIC_KEY=$VAPID_PUB|"   "$APP_DIR/.env"
     else
-        echo "VAPID_PRIVATE_KEY=$VAPID_PRIV" >> "$DIR/.env"
-        echo "VAPID_PUBLIC_KEY=$VAPID_PUB"   >> "$DIR/.env"
-        echo "VAPID_CONTACT=mailto:derekgg@gmail.com" >> "$DIR/.env"
+        echo "VAPID_PRIVATE_KEY=$VAPID_PRIV" >> "$APP_DIR/.env"
+        echo "VAPID_PUBLIC_KEY=$VAPID_PUB"   >> "$APP_DIR/.env"
+        echo "VAPID_CONTACT=mailto:derekgg@gmail.com" >> "$APP_DIR/.env"
     fi
     echo "    VAPID keys written to .env"
 else
@@ -131,15 +132,15 @@ fi
 # ── Notification cron jobs ────────────────────────────────────────────────────
 # Source .env directly so env vars are set before Python starts —
 # dotenv.load_dotenv() has been observed to silently fail under cron.
-CRON_DUE="* * * * * /bin/bash -c 'set -a; . $DIR/.env; set +a; $DIR/.venv/bin/python3 $DIR/send_notifications.py' >> $LOG_DIR/notifications.log 2>&1"
-CRON_OVERDUE="* * * * * /bin/bash -c 'set -a; . $DIR/.env; set +a; $DIR/.venv/bin/python3 $DIR/send_overdue_check.py' >> $LOG_DIR/overdue.log 2>&1"
+CRON_DUE="* * * * * /bin/bash -c 'set -a; . $APP_DIR/.env; set +a; $APP_DIR/.venv/bin/python3 $APP_DIR/send_notifications.py' >> $LOG_DIR/notifications.log 2>&1"
+CRON_OVERDUE="* * * * * /bin/bash -c 'set -a; . $APP_DIR/.env; set +a; $APP_DIR/.venv/bin/python3 $APP_DIR/send_overdue_check.py' >> $LOG_DIR/overdue.log 2>&1"
 # Always rewrite to pick up cron command changes between deploys
 (crontab -l 2>/dev/null | grep -vF "send_notifications.py" | grep -vF "send_overdue_check.py"; echo "$CRON_DUE"; echo "$CRON_OVERDUE") | crontab -
 echo "==> Cron jobs installed"
 
 # ── Sudoers ───────────────────────────────────────────────────────────────────
 echo "==> Installing sudoers rules"
-sudo cp "$DIR/deploy/sudoers-derek-ops" /etc/sudoers.d/derek-ops
+sudo cp "$APP_DIR/deploy/sudoers-derek-ops" /etc/sudoers.d/derek-ops
 sudo chmod 440 /etc/sudoers.d/derek-ops
 
 # ── Restart service (after .env is fully populated) ───────────────────────────
@@ -149,9 +150,9 @@ sudo systemctl restart "$APP"
 echo ""
 echo "Done."
 
-if grep -q "change-me" "$DIR/.env" 2>/dev/null; then
+if grep -q "change-me" "$APP_DIR/.env" 2>/dev/null; then
     echo ""
     echo ".env still has placeholder values. Edit it and restart the service:"
-    echo "  nano $DIR/.env"
+    echo "  nano $APP_DIR/.env"
     echo "  sudo systemctl restart $APP"
 fi

@@ -1,10 +1,71 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code memory (lives outside repo, but ignore if anything ends up here)
+.claude/
+
+# Logs / env
+*.log
 .env
+.env.local
+
+# ── Web (Python / Flask) ──────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
-instance/
-venv/
-.venv/
-*.db
-*.sqlite3
-.claude/
+Web/.venv/
+Web/instance/
+Web/*.db
+Web/*.sqlite3
+
+# ── iOS (Xcode / Swift) ───────────────────────────────────────────────────────
+iOS/build/
+iOS/DerivedData/
+iOS/*.xcodeproj/xcuserdata/
+iOS/*.xcodeproj/project.xcworkspace/xcuserdata/
+iOS/*.xcworkspace/xcuserdata/
+*.xcuserstate
+*.moved-aside
+xcuserdata/
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+
+# ── Android (Kotlin / Gradle) ─────────────────────────────────────────────────
+Android/.gradle/
+Android/build/
+Android/app/build/
+Android/captures/
+Android/local.properties
+Android/.idea/
+Android/*.iml
+Android/app/*.iml
+Android/.cxx/
+Android/.externalNativeBuild/
+
+# Release signing — never commit the keystore or its passwords.
+Android/keystore.properties
+Android/keystores/
+*.jks
+*.keystore
+
+# Kotlin
+*.class
+*.kotlin_module
+
+# ── Backend (Cloudflare Workers / TypeScript) ─────────────────────────────────
+Backend/node_modules/
+Backend/.wrangler/
+Backend/.dev.vars
+Backend/dist/

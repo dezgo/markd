@@ -5,11 +5,11 @@ After=network.target
 [Service]
 User=derek
 Group=www-data
-WorkingDirectory=/var/www/markd
-EnvironmentFile=/var/www/markd/.env
+WorkingDirectory=/var/www/markd/Web
+EnvironmentFile=/var/www/markd/Web/.env
 RuntimeDirectory=markd
 RuntimeDirectoryMode=0775
-ExecStart=/var/www/markd/.venv/bin/gunicorn \
+ExecStart=/var/www/markd/Web/.venv/bin/gunicorn \
   --workers 2 \
   --bind unix:/run/markd/markd.sock \
   --umask 007 \

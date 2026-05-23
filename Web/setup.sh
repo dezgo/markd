@@ -19,6 +19,24 @@ else
     git clone "$REPO" "$DIR"
 fi
 
+# ── Migrate stale root-level state into Web/ ─────────────────────────────────
+# The repo was restructured to live under Web/ (see git commit 6d68485). If this
+# server was set up before that, .env / markd.db / .venv still live at the old
+# repo root and the app silently falls back to placeholders/empty data. Move
+# them now so nothing is lost.
+mkdir -p "$APP_DIR"
+for stale in .env markd.db; do
+    if [ -e "$DIR/$stale" ] && [ ! -e "$APP_DIR/$stale" ]; then
+        echo "==> Migrating $DIR/$stale → $APP_DIR/$stale"
+        mv "$DIR/$stale" "$APP_DIR/$stale"
+    fi
+done
+if [ -d "$DIR/.venv" ] && [ ! -d "$APP_DIR/.venv" ]; then
+    # venvs hardcode their own path internally, so just rebuild rather than mv
+    echo "==> Removing stale $DIR/.venv (will rebuild at $APP_DIR/.venv)"
+    rm -rf "$DIR/.venv"
+fi
+
 # ── Python venv ───────────────────────────────────────────────────────────────
 if [ ! -d "$APP_DIR/.venv" ]; then
     echo "==> Creating venv"
@@ -66,7 +84,13 @@ if [ ! -f /etc/nginx/sites-available/"$APP" ]; then
     echo "==> Installing Nginx config (first install)"
     sudo cp "$APP_DIR/deploy/nginx-$APP.conf" /etc/nginx/sites-available/"$APP"
 else
-    echo "==> Nginx config already exists — skipping (Certbot owns it)"
+    echo "==> Nginx config already exists — skipping full copy (Certbot owns it)"
+    # But still patch the static alias in case the repo layout moved (e.g. into Web/).
+    # Idempotent: sed only rewrites when the old path is present.
+    if sudo grep -q "alias $DIR/static/" /etc/nginx/sites-available/"$APP"; then
+        echo "==> Patching stale static alias → $APP_DIR/static/"
+        sudo sed -i.bak "s|alias $DIR/static/|alias $APP_DIR/static/|g" /etc/nginx/sites-available/"$APP"
+    fi
 fi
 
 if [ ! -L /etc/nginx/sites-enabled/"$APP" ]; then

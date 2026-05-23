@@ -41,6 +41,16 @@ bash /var/www/markd/Web/setup.sh
 
 That's it — pulls latest, reinstalls deps, restarts the service.
 
+## Note on the Web/ restructure (May 2026)
+
+The repo used to be Python files at the root; now everything web-app related
+lives under `Web/`. If you're running `setup.sh` against a server that was
+provisioned **before** that restructure, the script will detect and migrate
+the stale `/var/www/markd/.env`, `/var/www/markd/markd.db`, and
+`/var/www/markd/.venv` into `Web/` automatically. It also patches the live
+Nginx static `alias` in place (Certbot owns that file, so we can't just
+overwrite it). No manual steps required.
+
 ## SSL (first install only)
 
 After `setup.sh` completes on a fresh server:

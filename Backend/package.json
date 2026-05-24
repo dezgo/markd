@@ -1,0 +1,21 @@
+{
+  "name": "markd-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Workers backend for Markd. Replaces ../Web/ (Flask) once phase 7 cutover lands.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "db:create": "wrangler d1 create markd",
+    "db:migrate:local": "wrangler d1 migrations apply markd --local",
+    "db:migrate:remote": "wrangler d1 migrations apply markd --remote",
+    "db:console:local": "wrangler d1 execute markd --local --command",
+    "db:console:remote": "wrangler d1 execute markd --remote --command"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260101.0",
+    "typescript": "^5.5.0",
+    "wrangler": "^4.86.0"
+  }
+}

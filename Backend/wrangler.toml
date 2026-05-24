@@ -1,0 +1,37 @@
+name = "markd-api"
+main = "src/index.ts"
+compatibility_date = "2026-05-24"
+
+# DNS cutover happens in phase 7. Until then this worker is reachable at
+# markd-api.<account>.workers.dev — no custom domain bound.
+#
+# When phase 7 lands, uncomment and deploy:
+#
+# [[routes]]
+# pattern = "markd.appfoundry.cc"
+# custom_domain = true
+
+[vars]
+EMAIL_FROM = "Markd <markd@appfoundry.cc>"
+APP_URL = "https://markd.appfoundry.cc"
+
+# Secrets (set via `wrangler secret put NAME` — never in this file):
+#   RESEND_API_KEY      Resend API key for verification + reset emails (phase 2).
+#   VAPID_PRIVATE_KEY   Web Push signing key (phase 5). Reuse the existing key
+#                       from Flask's .env so existing browser subscriptions stay
+#                       valid through cutover.
+#   VAPID_PUBLIC_KEY    Web Push public key (phase 5).
+#   VAPID_CONTACT       mailto: address embedded in VAPID claims (phase 5).
+
+# D1 database — run `npm run db:create`, then paste the returned database_id here.
+[[d1_databases]]
+binding = "DB"
+database_name = "markd"
+database_id = "1df2c7c9-8b26-4d35-ba8f-cfbfecc13890"
+migrations_dir = "migrations"
+
+# Scheduled triggers — wired up in phase 5.
+#   "* * * * *"   — every minute: send_notifications + send_overdue_check (one handler, both jobs).
+#
+# [triggers]
+# crons = ["* * * * *"]

@@ -69,3 +69,12 @@ Backend/node_modules/
 Backend/.wrangler/
 Backend/.dev.vars
 Backend/dist/
+
+# Defensive: stray secret/credential files anyone might create locally for a
+# one-off pipe (e.g. when feeding a value into `wrangler secret put`).
+**/key
+**/*.key
+**/secret
+**/secret.txt
+**/resend.txt
+**/vapid.txt

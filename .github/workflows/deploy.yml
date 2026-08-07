@@ -18,41 +18,14 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          # Without this, a failing command mid-script still exits 0 and the
-          # job reports success.
-          script_stop: true
+          # Keep this script trivial — drone-ssh mangles line continuations and
+          # its shell semantics are unreliable. All real logic lives in
+          # Web/deploy.sh, which the checkout below brings up to date first.
           script: |
-            set -euo pipefail
+            set -e
             cd /var/www/markd
-
-            # Pin to main explicitly. A bare `git pull` is a silent no-op when
-            # the checkout has been left on another branch (see May 2026: prod
-            # sat on restructure/monorepo for 2.5 months of "green" deploys).
             echo "==> Was on: $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"
             git fetch origin main
             git checkout main
             git merge --ff-only origin/main
-
-            # Assert we ended up where we think we did.
-            if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-              echo "ERROR: HEAD is not origin/main after checkout" >&2
-              exit 1
-            fi
-            echo "==> Deploying: $(git rev-parse --short HEAD) $(git log -1 --format=%s)"
-
-            Web/.venv/bin/pip install -q -r Web/requirements.txt
-            sudo systemctl restart markd
-
-            # Health check: the app must come back up AND report the version
-            # that's in the tree we just checked out.
-            EXPECTED=$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' Web/app.py)
-            LIVE=$(curl -fsS --retry 10 --retry-delay 1 --retry-connrefused \
-                     --unix-socket /run/markd/markd.sock http://localhost/version \
-                   | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')
-
-            if [ "$LIVE" != "$EXPECTED" ]; then
-              echo "ERROR: expected version '$EXPECTED', app is serving '$LIVE'" >&2
-              journalctl -u markd -n 40 --no-pager >&2 || true
-              exit 1
-            fi
-            echo "==> Deployed and serving $LIVE"
+            bash Web/deploy.sh

@@ -28,6 +28,7 @@ const formSheet = document.getElementById('todo-form-sheet');
 const formSheetTitle = document.getElementById('form-sheet-title');
 const formCancelBtn = document.getElementById('form-cancel-btn');
 const formDeleteBtn = document.getElementById('form-delete-btn');
+const formDuplicateBtn = document.getElementById('form-duplicate-btn');
 const fab = document.getElementById('fab');
 
 function setFormMode(mode) {
@@ -398,24 +399,28 @@ function populateFormFromTodo(todo) {
   setFormMode(isSomeday(todo) ? 'someday' : 'schedule');
 }
 
-function openForm({ todo = null } = {}) {
+// `clone` pre-fills the form from an existing todo but leaves editingId null,
+// so saving creates a new task instead of updating the original.
+function openForm({ todo = null, clone = false } = {}) {
   if (todo) {
-    editingId = todo.id;
+    editingId = clone ? null : todo.id;
     populateFormFromTodo(todo);
-    formSheetTitle.textContent = 'Edit todo';
-    formDeleteBtn.hidden = false;
+    formSheetTitle.textContent = clone ? 'Duplicate todo' : 'Edit todo';
+    formDeleteBtn.hidden = clone;
+    formDuplicateBtn.hidden = clone;
   } else {
     editingId = null;
     resetFormFields();
     formSheetTitle.textContent = 'New todo';
     formDeleteBtn.hidden = true;
+    formDuplicateBtn.hidden = true;
   }
   formSheet.hidden = false;
   formSheet.setAttribute('aria-hidden', 'false');
   document.body.classList.add('form-open');
   render();  // re-highlight the editing row if any
   setTimeout(() => {
-    if (!editingId) newTitle.focus();
+    if (!todo) newTitle.focus();  // a clone arrives pre-filled — don't pop the keyboard
     autoExpandNotes();
   }, 50);
 }
@@ -436,6 +441,11 @@ formDeleteBtn.addEventListener('click', () => {
   const todo = todos.find(t => t.id === editingId);
   closeForm();
   if (todo) remove(todo);
+});
+formDuplicateBtn.addEventListener('click', () => {
+  if (editingId === null) return;
+  const todo = todos.find(t => t.id === editingId);
+  if (todo) openForm({ todo, clone: true });
 });
 
 document.addEventListener('keydown', e => {

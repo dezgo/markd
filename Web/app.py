@@ -394,7 +394,7 @@ def send_reset_email(user: User):
 # Bumped on every release. Sole source of truth — stamped into app.js and sw.js
 # at server startup (see _versioned below) and exposed via /version for the
 # client-side staleness check.
-APP_VERSION = "v56"
+APP_VERSION = "v57"
 
 THEMES = {"indigo", "mint", "sunset", "berry", "slate"}
 

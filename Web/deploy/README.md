@@ -119,6 +119,23 @@ Start DMARC at `p=none` so nothing gets rejected while you watch the reports.
 Once a couple of weeks of clean sending have gone by, tighten to
 `p=quarantine`, then `p=reject`.
 
+DMARC is not strictly required at this volume — the Google/Yahoo bulk-sender
+rules start at 5,000 messages/day, and Resend's domain verification already
+gives SPF and DKIM alignment. It is worth having anyway for the aggregate
+reports, which are the only direct read on whether the reputation is recovering.
+
+**Reports to another domain need that domain's permission.** DMARC will not let
+`appfoundry.cc` direct reports to a `watsonblinds.com.au` mailbox unless
+`watsonblinds.com.au` says so — without this, most reporters silently drop them:
+
+```
+appfoundry.cc._report._dmarc.watsonblinds.com.au   TXT   v=DMARC1
+```
+
+Simplest way to avoid it is to use a mailbox on `appfoundry.cc` for `rua`.
+Either way, aggregate reports are raw XML — point `rua` at a free analyser
+(dmarcian, Postmark's DMARC Digests) rather than reading them by hand.
+
 **Then lock down the root domain.** Once nothing sends as `@appfoundry.cc`, say
 so explicitly — it stops spoofers trading on the damaged reputation, and the
 "no mail here" signal helps the subdomain stand on its own:
@@ -128,9 +145,12 @@ appfoundry.cc          TXT   v=spf1 -all
 _dmarc.appfoundry.cc   TXT   v=DMARC1; p=reject; sp=none; rua=mailto:derek@watsonblinds.com.au
 ```
 
-`sp=none` matters: without it the root's `p=reject` is inherited by
-`mail.appfoundry.cc` and would apply there before it has a reputation to stand
-on. Only add the `-all` SPF record if you are certain nothing sends from
+`sp=none` is insurance, not load-bearing: a subdomain's own `_dmarc` record wins,
+so once `_dmarc.mail.appfoundry.cc` exists the root's policy does not reach it.
+It only matters if that record is ever missing or mistyped — in which case the
+root's `p=reject` would apply to a subdomain that has no reputation yet.
+
+Only add the `-all` SPF record if you are certain nothing sends from
 `@appfoundry.cc` by any route — a mailbox provider, a contact form, a CI
 notifier. Receiving is unaffected either way; leave the root MX records alone.
 

@@ -26,6 +26,36 @@ class EmailToken(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
+class RateEvent(db.Model):
+    """One row per rate-limited action. Counted over a sliding window.
+
+    `key` is a namespaced bucket, e.g. "signup:ip:203.0.113.4", "signup:global",
+    "forgot:ip:...". Rows older than the longest window are pruned opportunistically.
+    DB-backed rather than in-process because gunicorn runs 2 workers, which would
+    otherwise let every limit through at twice the intended rate.
+    """
+    __tablename__ = "rate_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(160), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
+                           nullable=False, index=True)
+
+
+class SuppressedEmail(db.Model):
+    """Addresses we must never mail again — hard bounces and spam complaints.
+
+    Fed by the Resend webhook. Checked before every send, so one bounce can't
+    turn into repeated sends against the same dead mailbox.
+    """
+    __tablename__ = "suppressed_emails"
+
+    email = db.Column(db.String(255), primary_key=True)
+    reason = db.Column(db.String(32), nullable=False)  # 'bounced' | 'complained' | 'manual'
+    detail = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
 class Todo(db.Model):
     __tablename__ = "todos"
 

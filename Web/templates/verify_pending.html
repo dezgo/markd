@@ -12,6 +12,14 @@
     <h1 class="logo">Markd</h1>
     <h2 class="auth-heading">Check your email</h2>
     <p class="auth-body">We sent a verification link to <strong>{{ email }}</strong>. Click the link to activate your account.</p>
+    {% if resent %}
+      <p class="auth-body">If that address has an account awaiting verification, another link is on its way.</p>
+    {% else %}
+      <form method="post" action="{{ url_for('resend_verification') }}" class="auth-inline-form">
+        <input type="hidden" name="email" value="{{ email }}">
+        <button type="submit" class="link-button">Didn't get it? Send it again</button>
+      </form>
+    {% endif %}
     <p class="auth-link"><a href="{{ url_for('login') }}">Back to sign in</a></p>
   </div>
 </body>

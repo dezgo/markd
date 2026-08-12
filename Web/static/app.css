@@ -303,6 +303,39 @@ body {
   margin-bottom: 1rem;
 }
 
+/* Honeypot. Must stay in the layout and remain fillable — display:none and
+   visibility:hidden are both skipped by the bots this is meant to catch — so it
+   is pushed off-screen instead. Never remove: the signup gate depends on it. */
+.login-card .hp-field {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.login-card .cf-turnstile {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+.login-card .auth-inline-form { margin: 0; }
+.login-card .link-button {
+  margin-top: 0;
+  width: auto;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: underline;
+}
+.login-card .link-button:hover {
+  background: none;
+  color: var(--accent-dark);
+}
+
 /* ---- App shell ---- */
 
 .app-header {

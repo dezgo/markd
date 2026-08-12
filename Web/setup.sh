@@ -64,7 +64,10 @@ ensure_env() {
 ensure_env APP_URL "https://$DOMAIN"
 ensure_env INITIAL_ADMIN_EMAIL "you@example.com"
 ensure_env RESEND_API_KEY ""
-ensure_env EMAIL_FROM "Markd <markd@appfoundry.cc>"
+ensure_env EMAIL_FROM "Markd <markd@mail.appfoundry.cc>"
+ensure_env RESEND_WEBHOOK_SECRET ""
+ensure_env TURNSTILE_SITE_KEY ""
+ensure_env TURNSTILE_SECRET_KEY ""
 
 # ── Log dir ───────────────────────────────────────────────────────────────────
 echo "==> Log directory"

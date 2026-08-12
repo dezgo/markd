@@ -59,6 +59,37 @@
     </tr>
   </table>
 
+  <h2 style="font-size: 1rem; margin: 1.5rem 0 0.5rem;">Signup gate &amp; mail reputation</h2>
+  <table>
+    <tr>
+      <td>Sending from</td>
+      <td><code>{{ info.email_from }}</code></td>
+    </tr>
+    <tr>
+      <td>Turnstile (CAPTCHA)</td>
+      <td class="{{ 'ok' if info.turnstile_enabled else 'bad' }}">{{ 'enabled' if info.turnstile_enabled else 'OFF — keys not set' }}</td>
+    </tr>
+    <tr>
+      <td>Bounce webhook</td>
+      <td class="{{ 'ok' if info.bounce_webhook_configured else 'bad' }}">{{ 'configured' if info.bounce_webhook_configured else 'OFF — no signing secret' }}</td>
+    </tr>
+    <tr>
+      <td>Unverified accounts</td>
+      <td class="{{ 'bad' if info.unverified_users > 20 else '' }}">{{ info.unverified_users }}</td>
+    </tr>
+    <tr>
+      <td>Suppressed addresses</td>
+      <td>{{ info.suppressed_addresses }}</td>
+    </tr>
+    <tr>
+      <td>Mail sent (last hour / 24h)</td>
+      <td class="{{ 'bad' if info.mail_sent_last_hour >= info.mail_cap_per_hour else '' }}">
+        {{ info.mail_sent_last_hour }} / {{ info.mail_sent_last_24h }}
+        <span style="color:#6b7280;font-weight:400;">(hourly cap {{ info.mail_cap_per_hour }})</span>
+      </td>
+    </tr>
+  </table>
+
   <h2 style="font-size: 1rem; margin: 1.5rem 0 0.5rem;">Last 30 cron lines</h2>
   <pre>{% for line in info.log_tail %}{{ line }}
 {% endfor %}</pre>

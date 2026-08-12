@@ -5,3 +5,4 @@ python-dateutil>=2.9
 gunicorn>=21.2
 pywebpush>=2.0
 resend>=2.0
+dnspython>=2.6          # MX validation on signup — stops mail to undeliverable domains

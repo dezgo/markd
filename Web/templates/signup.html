@@ -6,6 +6,7 @@
   <title>Markd — Sign up</title>
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  {% if turnstile_site_key %}<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>{% endif %}
 </head>
 <body class="login-page">
   <div class="login-card">
@@ -15,6 +16,23 @@
       <input id="email" name="email" type="email" autocomplete="email" autofocus required>
       <label for="password">Password (min 8 chars)</label>
       <input id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
+
+      {# Honeypot: off-screen rather than type="hidden", because bots skip hidden
+         inputs but happily fill a visible-to-the-DOM one. Real users never see
+         it; tabindex and aria-hidden keep it out of keyboard and screen-reader
+         paths. Anything in here means "bot". #}
+      <div class="hp-field" aria-hidden="true">
+        <label for="{{ honeypot_field }}">Website</label>
+        <input id="{{ honeypot_field }}" name="{{ honeypot_field }}" type="text"
+               tabindex="-1" autocomplete="off">
+      </div>
+      {# Signed "form served at T" stamp — proves the form wasn't posted instantly. #}
+      <input type="hidden" name="form_token" value="{{ form_token }}">
+
+      {% if turnstile_site_key %}
+      <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
+      {% endif %}
+
       {% if error %}<p class="error">{{ error }}</p>{% endif %}
       <button type="submit">Create account</button>
     </form>

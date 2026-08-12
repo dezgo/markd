@@ -1,5 +1,8 @@
+import base64
+import hashlib
+import hmac
+import json
 import os
-import re
 import secrets
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -25,6 +28,7 @@ from flask import (
     url_for,
 )
 from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import resend
@@ -32,7 +36,10 @@ import resend
 load_dotenv()
 
 from database import db
-from models import EmailToken, PushSubscription, RECURRENCE_UNITS, Todo, User, UserSettings
+from models import (
+    EmailToken, PushSubscription, RECURRENCE_UNITS, SuppressedEmail, Todo, User, UserSettings,
+)
+import antispam
 
 
 # ---------------------------------------------------------------------------
@@ -94,13 +101,6 @@ def _valid_time(t: str) -> bool:
         return False
 
 
-_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
-
-
-def _valid_email(e: str) -> bool:
-    return bool(e and _EMAIL_RE.match(e))
-
-
 def parse_recurrence(data: dict):
     interval = data.get("recurrence_interval")
     unit = data.get("recurrence_unit") or None
@@ -148,6 +148,13 @@ def parse_recurrence(data: dict):
 
 app = Flask(__name__)
 app.secret_key = os.environ["SECRET_KEY"]
+
+# nginx proxies over a unix socket, so without this every request looks like it
+# came from the same place and per-IP rate limiting silently does nothing.
+# One proxy hop (nginx) — do not raise these counts unless a real proxy is added
+# in front, or clients can spoof X-Forwarded-For and evade the limits.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 _default_db = "sqlite:///" + os.path.join(os.path.dirname(os.path.abspath(__file__)), "markd.db")
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", _default_db)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -230,7 +237,10 @@ VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 VAPID_CONTACT = os.environ.get("VAPID_CONTACT", "mailto:admin@example.com")
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-EMAIL_FROM = os.environ.get("EMAIL_FROM", "Markd <markd@appfoundry.cc>")
+# Transactional mail sends from a dedicated subdomain so app-mail reputation is
+# insulated from the root domain. See deploy/README.md for the DNS records.
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "Markd <markd@mail.appfoundry.cc>")
+RESEND_WEBHOOK_SECRET = os.environ.get("RESEND_WEBHOOK_SECRET", "")
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
 
@@ -238,6 +248,10 @@ if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
     print("WARNING: VAPID keys not configured — push notifications disabled.", file=sys.stderr, flush=True)
 if not RESEND_API_KEY:
     print("WARNING: RESEND_API_KEY not set — email verification and password reset disabled.", file=sys.stderr, flush=True)
+if not RESEND_WEBHOOK_SECRET:
+    print("WARNING: RESEND_WEBHOOK_SECRET not set — bounce/complaint suppression disabled.", file=sys.stderr, flush=True)
+if not antispam.is_turnstile_enabled():
+    print("WARNING: Turnstile keys not set — signup CAPTCHA disabled (other defences still active).", file=sys.stderr, flush=True)
 
 NOTIFICATIONS_LOG = "/var/log/markd/notifications.log"
 
@@ -291,11 +305,30 @@ def require_api_key(f):
 # ---------------------------------------------------------------------------
 
 def _send_email(to: str, subject: str, html: str):
+    """Single choke point for outbound mail.
+
+    Every send passes the suppression list and the global hourly cap, so no code
+    path — present or future — can mail a known-bad address or flood the domain.
+    """
     if not RESEND_API_KEY:
         print(f"(would send email to {to}: {subject})", file=sys.stderr, flush=True)
         return False
+
+    if antispam.is_suppressed(to):
+        print(f"Suppressed address, not sending to {to}: {subject}", file=sys.stderr, flush=True)
+        return False
+
+    if not antispam.global_mail_rate_ok():
+        print(
+            f"GLOBAL MAIL CAP HIT — dropping send to {to} ({subject}). "
+            "Something is generating mail in bulk; check /diagnostics.",
+            file=sys.stderr, flush=True,
+        )
+        return False
+
     try:
         resend.Emails.send({"from": EMAIL_FROM, "to": [to], "subject": subject, "html": html})
+        antispam.record_event("mail:global")
         return True
     except Exception as e:
         print(f"Email send failed for {to}: {e}", file=sys.stderr, flush=True)
@@ -394,7 +427,7 @@ def send_reset_email(user: User):
 # Bumped on every release. Sole source of truth — stamped into app.js and sw.js
 # at server startup (see _versioned below) and exposed via /version for the
 # client-side staleness check.
-APP_VERSION = "v57"
+APP_VERSION = "v58"
 
 THEMES = {"indigo", "mint", "sunset", "berry", "slate"}
 
@@ -441,29 +474,104 @@ def version():
 # Auth UI routes
 # ---------------------------------------------------------------------------
 
+def _log_blocked(stage: str, ip: str, email: str, detail: str = ""):
+    """One line per rejected signup, so the logs show whether the gate is doing
+    anything and which layer is carrying the load."""
+    suffix = f" ({detail})" if detail else ""
+    print(f"signup blocked [{stage}] ip={ip} email={email}{suffix}", file=sys.stderr, flush=True)
+
+
+def _signup_form(error=None):
+    """Every render mints a fresh timing token — a stale one fails the trap."""
+    return render_template(
+        "signup.html",
+        error=error,
+        form_token=antispam.issue_form_token(),
+        honeypot_field=antispam.HONEYPOT_FIELD,
+        turnstile_site_key=antispam.TURNSTILE_SITE_KEY,
+    )
+
+
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
-    error = None
-    if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
-        password = request.form.get("password") or ""
-        if not _valid_email(email):
-            error = "Please enter a valid email address."
-        elif len(password) < 8:
-            error = "Password must be at least 8 characters."
-        elif User.query.filter_by(email=email).first():
-            error = "An account with that email already exists."
-        else:
-            user = User(
-                email=email,
-                password_hash=generate_password_hash(password),
-                email_verified=False,
-            )
-            db.session.add(user)
-            db.session.commit()
+    if request.method == "GET":
+        return _signup_form()
+
+    email = (request.form.get("email") or "").strip().lower()
+    password = request.form.get("password") or ""
+    ip = antispam.client_ip()
+
+    # Layer 1. Silent rejection: bots get the same "check your inbox" page a
+    # real signup gets, so they can't tell a block from a success and tune
+    # against it. No user row, no email.
+    if not antispam.form_looks_human(request.form):
+        _log_blocked("trap", ip, email)
+        return render_template("verify_pending.html", email=email, resent=False)
+
+    # Layer 2a. Anti-hammering, loose enough to survive a few typos.
+    if not antispam.signup_attempt_rate_ok(ip):
+        _log_blocked("attempt-rate", ip, email)
+        return _signup_form("Too many attempts. Please try again later.")
+    antispam.record_event(f"signup:attempt:{ip}")
+    antispam.prune_rate_events()
+
+    # Cheap local checks before anything that costs a network round trip.
+    if len(password) < 8:
+        return _signup_form("Password must be at least 8 characters.")
+
+    # Layer 4. Before DNS, so a bot can't use signup as a free DNS prober.
+    if not antispam.verify_turnstile(request.form, ip):
+        _log_blocked("turnstile", ip, email)
+        return _signup_form("Couldn't verify that you're human. Please try again.")
+
+    # Layer 3. The direct bounce-preventer.
+    reason = antispam.validate_email_address(email)
+    if reason:
+        _log_blocked("address", ip, email, reason)
+        if reason == "syntax":
+            return _signup_form("Please enter a valid email address.")
+        return _signup_form(
+            "That address doesn't look like it can receive mail. "
+            "Please check it, or use a different one."
+        )
+
+    if User.query.filter_by(email=email).first():
+        return _signup_form("An account with that email already exists.")
+
+    # Layer 2b. The tight limit — only reached when mail is about to be sent.
+    if not antispam.signup_send_rate_ok(ip):
+        _log_blocked("send-rate", ip, email)
+        return _signup_form("Too many accounts created from here recently. Please try again later.")
+
+    user = User(
+        email=email,
+        password_hash=generate_password_hash(password),
+        email_verified=False,
+    )
+    db.session.add(user)
+    db.session.commit()
+    antispam.record_event(f"signup:sent:{ip}")
+    send_verification_email(user)
+    return render_template("verify_pending.html", email=email, resent=False)
+
+
+@app.route("/resend-verification", methods=["POST"])
+def resend_verification():
+    """Real users lose the first email; without this their only route back in
+    was to sign up again with a different address. Tightly limited, and it never
+    reveals whether the account exists or is already verified."""
+    email = (request.form.get("email") or "").strip().lower()
+    ip = antispam.client_ip()
+
+    if antispam.rate_exceeded(f"resend:ip:{ip}", antispam.LIMIT_RESEND_IP_HOUR):
+        _log_blocked("resend-rate", ip, email)
+    else:
+        antispam.record_event(f"resend:ip:{ip}")
+        user = User.query.filter_by(email=email).first()
+        if user and not user.email_verified:
             send_verification_email(user)
-            return render_template("verify_pending.html", email=email)
-    return render_template("signup.html", error=error)
+
+    return render_template("verify_pending.html", email=email, resent=True)
 
 
 @app.route("/verify/<token>")
@@ -505,9 +613,18 @@ def forgot_password():
     sent = False
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
-        user = User.query.filter_by(email=email).first()
-        if user:
-            send_reset_email(user)
+        ip = antispam.client_ip()
+        # Rate-limited for the same reason signup is: this route will mail any
+        # address that has an account, and bot-created accounts are exactly the
+        # dead addresses we must stop mailing. Over the limit we still report
+        # "sent", to keep the no-disclosure property below intact.
+        if antispam.rate_exceeded(f"forgot:ip:{ip}", antispam.LIMIT_FORGOT_IP_HOUR):
+            _log_blocked("forgot-rate", ip, email)
+        else:
+            antispam.record_event(f"forgot:ip:{ip}")
+            user = User.query.filter_by(email=email).first()
+            if user:
+                send_reset_email(user)
         sent = True  # show same message regardless, to avoid revealing account existence
     return render_template("forgot.html", sent=sent)
 
@@ -534,6 +651,103 @@ def reset_password(token):
                 return redirect(url_for("login"))
             error = "This link is no longer valid."
     return render_template("reset.html", error=error, token=token)
+
+
+# ---------------------------------------------------------------------------
+# Resend webhook — bounce/complaint suppression
+# ---------------------------------------------------------------------------
+
+def _verify_svix_signature(raw_body: bytes) -> bool:
+    """Verify Resend's Svix-signed webhook.
+
+    Signed content is "{id}.{timestamp}.{body}", HMAC-SHA256 with the secret's
+    base64 payload, compared against any v1 signature in the header.
+    """
+    if not RESEND_WEBHOOK_SECRET:
+        return False
+
+    msg_id = request.headers.get("svix-id", "")
+    timestamp = request.headers.get("svix-timestamp", "")
+    sig_header = request.headers.get("svix-signature", "")
+    if not (msg_id and timestamp and sig_header):
+        return False
+
+    # Reject replays of an old, legitimately-signed delivery.
+    try:
+        age = abs(datetime.now(timezone.utc).timestamp() - int(timestamp))
+    except ValueError:
+        return False
+    if age > 300:
+        return False
+
+    secret = RESEND_WEBHOOK_SECRET
+    if secret.startswith("whsec_"):
+        secret = secret[len("whsec_"):]
+    try:
+        key = base64.b64decode(secret)
+    except Exception:
+        return False
+
+    signed = f"{msg_id}.{timestamp}.".encode() + raw_body
+    expected = base64.b64encode(hmac.new(key, signed, hashlib.sha256).digest()).decode()
+
+    # Header holds space-separated "v1,<sig>" entries — Svix sends more than one
+    # during a secret rotation.
+    for part in sig_header.split():
+        version, _, sig = part.partition(",")
+        if version == "v1" and hmac.compare_digest(sig, expected):
+            return True
+    return False
+
+
+@app.route("/webhooks/resend", methods=["POST"])
+def resend_webhook():
+    raw = request.get_data()
+    if not _verify_svix_signature(raw):
+        abort(401)
+
+    try:
+        event = json.loads(raw.decode())
+    except (ValueError, UnicodeDecodeError):
+        abort(400)
+
+    event_type = event.get("type", "")
+    data = event.get("data") or {}
+    recipients = data.get("to") or []
+    if isinstance(recipients, str):
+        recipients = [recipients]
+
+    if event_type == "email.bounced":
+        # Transient bounces (full mailbox, greylisting) recover on their own —
+        # suppressing those would lock out real users.
+        bounce_type = ((data.get("bounce") or {}).get("type") or "").lower()
+        if bounce_type and bounce_type != "permanent":
+            print(f"Resend {bounce_type} bounce for {recipients} — not suppressing",
+                  file=sys.stderr, flush=True)
+            return jsonify({"ok": True, "action": "ignored-transient"})
+        reason = "bounced"
+    elif event_type == "email.complained":
+        reason = "complained"
+    else:
+        return jsonify({"ok": True, "action": "ignored"})
+
+    for addr in recipients:
+        addr = (addr or "").strip().lower()
+        if not addr:
+            continue
+        antispam.suppress(addr, reason, detail=json.dumps(data.get("bounce") or {})[:500])
+        # A hard bounce on an unverified account means the address was never
+        # real. Drop the row so the junk doesn't accumulate.
+        user = User.query.filter_by(email=addr).first()
+        if user and not user.email_verified:
+            EmailToken.query.filter_by(user_id=user.id).delete()
+            db.session.delete(user)
+            db.session.commit()
+            print(f"Removed unverified user after {reason}: {addr}", file=sys.stderr, flush=True)
+        else:
+            print(f"Suppressed {addr} ({reason})", file=sys.stderr, flush=True)
+
+    return jsonify({"ok": True, "action": reason})
 
 
 @app.route("/logout")
@@ -826,6 +1040,20 @@ def diagnostics():
         "vapid_public_key_preview": (VAPID_PUBLIC_KEY[:30] + "…") if VAPID_PUBLIC_KEY else "(not set)",
         "vapid_contact": VAPID_CONTACT,
         "email_configured": bool(RESEND_API_KEY),
+        "email_from": EMAIL_FROM,
+        # Signup gate health. unverified_users climbing and mail_sent_last_24h
+        # spiking together is the bot-signup signature that started all this.
+        "turnstile_enabled": antispam.is_turnstile_enabled(),
+        "bounce_webhook_configured": bool(RESEND_WEBHOOK_SECRET),
+        "unverified_users": User.query.filter_by(email_verified=False).count(),
+        "suppressed_addresses": SuppressedEmail.query.count(),
+        "mail_sent_last_24h": antispam.count_since(
+            "mail:global", datetime.now(timezone.utc) - timedelta(days=1)
+        ),
+        "mail_sent_last_hour": antispam.count_since(
+            "mail:global", datetime.now(timezone.utc) - timedelta(hours=1)
+        ),
+        "mail_cap_per_hour": antispam.LIMIT_GLOBAL_MAIL_HOUR[0],
         "subscription_count": PushSubscription.query.filter_by(user_id=uid).count(),
         "todos_total": Todo.query.filter_by(user_id=uid).count(),
         "todos_active": Todo.query.filter_by(user_id=uid, done=False).count(),

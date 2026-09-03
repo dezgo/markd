@@ -88,21 +88,30 @@ function setSelectedDays(container, daysCsv) {
 }
 function wireDayToggles(container) {
   container.querySelectorAll('.day-toggle').forEach(b => {
-    b.addEventListener('click', () => b.classList.toggle('is-on'));
+    b.addEventListener('click', () => {
+      b.classList.toggle('is-on');
+      newRecurUnit.setCustomValidity('');  // clear the "pick a weekday" warning
+    });
   });
 }
 wireDayToggles(newDayToggles);
 
+// Units that take an "every N" count. The other choices ('' = never, weekdays,
+// monthly-last, monthly-2last) carry their own control instead, so each option
+// in the dropdown reveals exactly one set of inputs.
+const UNITS_WITH_INTERVAL = new Set(['days', 'weeks', 'months', 'years']);
+
 function syncRecurControls() {
   const unit = newRecurUnit.value;
   const isMonthlyWeekday = unit === 'monthly-last' || unit === 'monthly-2last';
-  newDayTogglesWrap.hidden = unit !== 'weeks';
+  const takesInterval = UNITS_WITH_INTERVAL.has(unit);
+  newDayTogglesWrap.hidden = unit !== 'weekdays';
   monthlyWeekdayWrap.hidden = !isMonthlyWeekday;
-  // The 'every N' input is meaningless for monthly-last/2last
   const intervalInput = recurIntervalRow.querySelector('#new-recur-interval');
   const intervalLabel = recurIntervalRow.querySelector('.form-row-label');
-  intervalInput.hidden = isMonthlyWeekday;
-  intervalLabel.hidden = isMonthlyWeekday;
+  intervalInput.hidden = !takesInterval;
+  intervalLabel.hidden = !takesInterval;
+  newRecurUnit.setCustomValidity('');
 }
 newRecurUnit.addEventListener('change', syncRecurControls);
 syncRecurControls();
@@ -358,7 +367,7 @@ function resetFormFields() {
   newNotes.style.height = '';
   newRecurInterval.value = '';
   setSelectedDays(newDayToggles, '');
-  newRecurUnit.value = 'weeks';
+  newRecurUnit.value = '';
   monthlyWeekdaySelect.value = '1';
   syncRecurControls();
   setFormMode('someday');
@@ -386,8 +395,11 @@ function populateFormFromTodo(todo) {
   }
 
   newNotes.value = todo.notes || '';
-  newRecurUnit.value = todo.recurrence_unit || 'weeks';
-  newRecurInterval.value = todo.recurrence_interval || '';
+  // Weekday recurrence is stored as unit 'weeks' + days; the form shows it as
+  // its own 'weekdays' choice, and its interval is a synthetic 1 worth hiding.
+  const isWeekdayRecur = todo.recurrence_unit === 'weeks' && !!todo.recurrence_days;
+  newRecurUnit.value = isWeekdayRecur ? 'weekdays' : (todo.recurrence_unit || '');
+  newRecurInterval.value = isWeekdayRecur ? '' : (todo.recurrence_interval || '');
   if (todo.recurrence_unit === 'monthly-last' || todo.recurrence_unit === 'monthly-2last') {
     monthlyWeekdaySelect.value = (todo.recurrence_days || '1').split(',')[0];
   } else {
@@ -610,21 +622,18 @@ function buildPayload({ forUpdate }) {
       payload.recurrence_unit = unit;
       payload.recurrence_days = monthlyWeekdaySelect.value;
       if (forUpdate) payload.recurrence_interval = null;
-    } else {
-      const selectedDays = unit === 'weeks' ? getSelectedDays(newDayToggles) : [];
-      if (selectedDays.length > 0) {
-        payload.recurrence_unit = 'weeks';
-        payload.recurrence_days = selectedDays.join(',');
-        if (forUpdate) payload.recurrence_interval = null;
-      } else if (newRecurInterval.value) {
-        payload.recurrence_interval = parseInt(newRecurInterval.value, 10);
-        payload.recurrence_unit = unit;
-        if (forUpdate) payload.recurrence_days = null;
-      } else if (forUpdate) {
-        payload.recurrence_interval = null;
-        payload.recurrence_unit = null;
-        payload.recurrence_days = null;
-      }
+    } else if (unit === 'weekdays') {
+      payload.recurrence_unit = 'weeks';
+      payload.recurrence_days = getSelectedDays(newDayToggles).join(',');
+      if (forUpdate) payload.recurrence_interval = null;
+    } else if (unit && newRecurInterval.value) {
+      payload.recurrence_interval = parseInt(newRecurInterval.value, 10);
+      payload.recurrence_unit = unit;
+      if (forUpdate) payload.recurrence_days = null;
+    } else if (forUpdate) {
+      payload.recurrence_interval = null;
+      payload.recurrence_unit = null;
+      payload.recurrence_days = null;
     }
   }
 
@@ -641,32 +650,50 @@ addForm.addEventListener('submit', async e => {
   e.preventDefault();
   if (!newTitle.value.trim()) return;
 
-  if (editingId !== null) {
-    const payload = buildPayload({ forUpdate: true });
-    const updated = await api(`/todos/${editingId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(payload),
-    });
-    const idx = todos.findIndex(t => t.id === editingId);
-    if (idx !== -1) todos[idx] = updated;
-    closeForm();
+  // "on set weekdays" with nothing ticked would reach the API as an unusable
+  // recurrence; catch it here so the user gets a message instead of a dead form.
+  if (formMode === 'schedule' && newRecurUnit.value === 'weekdays'
+      && getSelectedDays(newDayToggles).length === 0) {
+    newRecurUnit.setCustomValidity('Pick at least one weekday, or set Repeats to never.');
+    newRecurUnit.reportValidity();
     return;
   }
 
-  const payload = buildPayload({ forUpdate: false });
-  const created = await api('/todos', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-  todos.unshift(created);
+  // Any API rejection below used to leave the form open with no feedback at
+  // all, which is how a bad payload looks identical to "nothing happened".
+  try {
+    if (editingId !== null) {
+      const payload = buildPayload({ forUpdate: true });
+      const updated = await api(`/todos/${editingId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      });
+      const idx = todos.findIndex(t => t.id === editingId);
+      if (idx !== -1) todos[idx] = updated;
+      closeForm();
+      return;
+    }
 
-  const targetFilter = isSomeday(created) ? 'someday' : 'active';
-  if (filter !== targetFilter) {
-    filter = targetFilter;
-    document.querySelector('.tab.active').classList.remove('active');
-    document.querySelector(`[data-filter="${targetFilter}"]`).classList.add('active');
+    const payload = buildPayload({ forUpdate: false });
+    const created = await api('/todos', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    todos.unshift(created);
+
+    const targetFilter = isSomeday(created) ? 'someday' : 'active';
+    if (filter !== targetFilter) {
+      filter = targetFilter;
+      document.querySelector('.tab.active').classList.remove('active');
+      document.querySelector(`[data-filter="${targetFilter}"]`).classList.add('active');
+    }
+    closeForm();
+  } catch (err) {
+    newRecurUnit.setCustomValidity('');
+    newTitle.setCustomValidity(err.message || 'Could not save. Please try again.');
+    newTitle.reportValidity();
+    newTitle.setCustomValidity('');
   }
-  closeForm();
 });
 
 // ---------------------------------------------------------------------------

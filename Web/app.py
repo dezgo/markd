@@ -58,6 +58,31 @@ def _nth_last_weekday_of_month(year: int, month: int, weekday_py: int, n: int) -
     return d
 
 
+def _weekday_set(days_csv: str) -> set:
+    """CSV of JS weekday numbers (Sun=0..Sat=6) -> set of ints."""
+    return {int(d) for d in days_csv.split(",") if d}
+
+
+def _js_weekday(d: date) -> int:
+    """Python weekday (Mon=0..Sun=6) -> JS weekday (Sun=0..Sat=6)."""
+    return (d.weekday() + 1) % 7
+
+
+def first_due_date(base: date, days_csv: str) -> date:
+    """First date on or after `base` falling on one of the CSV weekdays.
+
+    Used to seed a start date for a "on set weekdays" task the user created
+    without picking one; without a due_date such a task never surfaces in a
+    day group and never notifies.
+    """
+    days = _weekday_set(days_csv)
+    for offset in range(0, 7):
+        candidate = base + timedelta(days=offset)
+        if _js_weekday(candidate) in days:
+            return candidate
+    return base
+
+
 def next_due_date(base: date, interval: int, unit: str, days_csv: str = None) -> date:
     if unit in ("monthly-last", "monthly-2last") and days_csv:
         js_weekday = int(days_csv.split(",")[0])
@@ -74,11 +99,10 @@ def next_due_date(base: date, interval: int, unit: str, days_csv: str = None) ->
         return candidate
 
     if unit == "weeks" and days_csv:
-        days = {int(d) for d in days_csv.split(",") if d}
+        days = _weekday_set(days_csv)
         for offset in range(1, 8):
             candidate = base + timedelta(days=offset)
-            js_dow = (candidate.weekday() + 1) % 7  # Sun=0..Sat=6
-            if js_dow in days:
+            if _js_weekday(candidate) in days:
                 return candidate
         return base + timedelta(days=7)
 
@@ -119,6 +143,11 @@ def parse_recurrence(data: dict):
         if len(day_list) != 1 or not 0 <= day_list[0] <= 6:
             return None, None, None, "recurrence_days must be a single weekday number 0-6"
         return None, unit, str(day_list[0]), None
+
+    if unit == "weeks" and days is not None and not str(days).strip():
+        # Distinguish "weekday recurrence with nothing picked" from "every N
+        # weeks"; otherwise this falls through to a misleading interval error.
+        return None, None, None, "recurrence_days must name at least one weekday (0-6)"
 
     if days and unit == "weeks":
         try:
@@ -185,7 +214,7 @@ with app.app_context():
 
     _ensure_columns("todos", {
         "recurrence_interval": "INTEGER",
-        "recurrence_unit":     "VARCHAR(10)",
+        "recurrence_unit":     "VARCHAR(20)",
         "recurrence_days":     "VARCHAR(15)",
         "due_time":            "VARCHAR(5)",
         "notes":               "TEXT",
@@ -427,7 +456,7 @@ def send_reset_email(user: User):
 # Bumped on every release. Sole source of truth — stamped into app.js and sw.js
 # at server startup (see _versioned below) and exposed via /version for the
 # client-side staleness check.
-APP_VERSION = "v58"
+APP_VERSION = "v59"
 
 THEMES = {"indigo", "mint", "sunset", "berry", "slate"}
 
@@ -806,6 +835,11 @@ def create_todo():
     if err:
         return jsonify({"error": err}), 400
 
+    # A weekday recurrence with no start date would sit undated forever: it never
+    # lands in a day group and the notifier skips it. Seed the first occurrence.
+    if due_date is None and unit == "weeks" and days_csv:
+        due_date = first_due_date(date.today(), days_csv)
+
     todo = Todo(
         user_id=current_user_id(),
         title=title, due_date=due_date, due_time=due_time,
@@ -883,6 +917,10 @@ def update_todo(todo_id):
                 todo.due_date = date.fromisoformat(data["due_date"])
             except ValueError:
                 return jsonify({"error": "due_date must be YYYY-MM-DD"}), 400
+
+    # Same invariant as create_todo: a weekday recurrence always has a start date.
+    if todo.due_date is None and todo.recurrence_unit == "weeks" and todo.recurrence_days:
+        todo.due_date = first_due_date(date.today(), todo.recurrence_days)
 
     todo.updated_at = datetime.now(timezone.utc)
     db.session.commit()

@@ -89,10 +89,12 @@
           <span class="form-row-label">every</span>
           <input id="new-recur-interval" type="number" min="1" max="99" placeholder="—" inputmode="numeric" pattern="[0-9]*">
           <select id="new-recur-unit">
+            <option value="" selected>never</option>
             <option value="days">days</option>
-            <option value="weeks" selected>weeks</option>
+            <option value="weeks">weeks</option>
             <option value="months">months</option>
             <option value="years">years</option>
+            <option value="weekdays">on set weekdays</option>
             <option value="monthly-last">last weekday of month</option>
             <option value="monthly-2last">2nd-last weekday of month</option>
           </select>

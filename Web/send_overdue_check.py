@@ -6,7 +6,7 @@ currently that minute there and we have not already fired today, send ONE
 bundled push listing their overdue items. If nothing is overdue, stay silent —
 this is a nag, not a daily digest.
 """
-from datetime import date, datetime, time as dt_time, timezone
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import cronlib
@@ -23,28 +23,19 @@ from push import build_payload, send_to_user
 def overdue_for_user(user_id: int, today_local: date, now_utc_naive: datetime):
     """A user's overdue todos.
 
-    Date-only todos are overdue once the day has passed in the user's own
-    timezone; timed todos are compared as UTC instants, since that is how
-    due_date + due_time are stored.
+    Two conditions because the two storage shapes mean different things: a
+    timed todo is late once its instant has passed, an all-day todo only once
+    the whole day has gone in the owner's zone. Both are expressed in SQL —
+    an all-day task is not "overdue" at one minute past midnight.
     """
-    overdue = []
-    todos = Todo.query.filter(
+    return Todo.query.filter(
         Todo.user_id == user_id,
         Todo.done == False,
-        Todo.due_date != None,
+        db.or_(
+            db.and_(Todo.due_at != None, Todo.due_at < now_utc_naive),
+            db.and_(Todo.due_on != None, Todo.due_on < today_local),
+        ),
     ).all()
-    for t in todos:
-        if t.due_time:
-            try:
-                h, m = map(int, t.due_time.split(":"))
-            except ValueError:
-                log(f"  todo {t.id}: unparseable due_time {t.due_time!r} — skipping")
-                continue
-            if datetime.combine(t.due_date, dt_time(h, m)) < now_utc_naive:
-                overdue.append(t)
-        elif t.due_date < today_local:
-            overdue.append(t)
-    return overdue
 
 
 def run():

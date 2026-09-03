@@ -164,20 +164,34 @@ def test_a_non_recurring_todo_spawns_nothing(api):
     assert len(api.get("/todos").get_json()) == 1
 
 
+def _as_local(todo, tz):
+    """What the client renders: the API's UTC pair, seen in the owner's zone."""
+    from datetime import datetime, timezone
+    if todo["due_time"] is None:
+        return date.fromisoformat(todo["due_date"]), None
+    utc = datetime.combine(date.fromisoformat(todo["due_date"]),
+                           datetime.strptime(todo["due_time"], "%H:%M").time(),
+                           tzinfo=timezone.utc)
+    local = utc.astimezone(tz)
+    return local.date(), local.time()
+
+
 def test_weekday_recurrence_respects_the_owners_timezone(api, set_timezone):
     """The Canberra bug, through the real API: every occurrence must land on a
-    weekday the user actually chose, in their own calendar."""
+    weekday the user actually chose, in their own calendar — and keep 07:00
+    across the DST change."""
+    from datetime import time
     from zoneinfo import ZoneInfo
-    from scheduling import local_date
     set_timezone("Australia/Sydney")
     syd = ZoneInfo("Australia/Sydney")
 
     t = api.post("/todos", {"title": "Strength day", "due_time": "07:00",
                             "recurrence_unit": "weeks",
                             "recurrence_days": MWF}).get_json()
-    for _ in range(8):
-        shown = local_date(date.fromisoformat(t["due_date"]), t["due_time"], syd)
+    for _ in range(20):
+        shown, at = _as_local(t, syd)
         assert (shown.weekday() + 1) % 7 in {1, 3, 5}, f"{shown:%a} was never chosen"
+        assert at == time(7, 0), f"local time drifted to {at}"
         api.patch(f"/todos/{t['id']}", {"done": True})
         t = [x for x in api.get("/todos").get_json()
              if x["spawned_from_id"] == t["id"]][0]

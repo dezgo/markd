@@ -25,6 +25,7 @@ __pycache__/
 Web/.venv/
 Web/instance/
 Web/*.db
+Web/backups/
 Web/*.sqlite3
 
 # ── iOS (Xcode / Swift) ───────────────────────────────────────────────────────

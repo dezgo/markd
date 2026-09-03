@@ -57,7 +57,7 @@ ensure_env() {
     local key="$1"
     local default="$2"
     if ! grep -q "^${key}=" "$APP_DIR/.env"; then
-        echo "${key}=${default}" >> "$APP_DIR/.env"
+        echo "${key}=\"${default}\"" >> "$APP_DIR/.env"
         echo "    added ${key}= to .env (set a real value)"
     fi
 }
@@ -157,10 +157,17 @@ else
 fi
 
 # ── Notification cron jobs ────────────────────────────────────────────────────
-# Source .env directly so env vars are set before Python starts —
-# dotenv.load_dotenv() has been observed to silently fail under cron.
-CRON_DUE="* * * * * /bin/bash -c 'set -a; . $APP_DIR/.env; set +a; $APP_DIR/.venv/bin/python3 $APP_DIR/send_notifications.py' >> $LOG_DIR/notifications.log 2>&1"
-CRON_OVERDUE="* * * * * /bin/bash -c 'set -a; . $APP_DIR/.env; set +a; $APP_DIR/.venv/bin/python3 $APP_DIR/send_overdue_check.py' >> $LOG_DIR/overdue.log 2>&1"
+# Do NOT source .env with the shell here. It used to, to work around
+# load_dotenv() appearing to fail under cron — but .env is not a shell script,
+# and one unquoted value (EMAIL_FROM="Markd <markd@...>") made bash abort
+# mid-file, silently leaving every variable below it unset. That disabled
+# bounce suppression and the signup CAPTCHA in the cron processes for months,
+# announcing itself only as a syntax error in the log.
+#
+# config.py now loads .env itself from a path derived from its own __file__,
+# so it works regardless of cron's working directory.
+CRON_DUE="* * * * * cd $APP_DIR && $APP_DIR/.venv/bin/python3 $APP_DIR/send_notifications.py >> $LOG_DIR/notifications.log 2>&1"
+CRON_OVERDUE="* * * * * cd $APP_DIR && $APP_DIR/.venv/bin/python3 $APP_DIR/send_overdue_check.py >> $LOG_DIR/overdue.log 2>&1"
 # Always rewrite to pick up cron command changes between deploys
 (crontab -l 2>/dev/null | grep -vF "send_notifications.py" | grep -vF "send_overdue_check.py"; echo "$CRON_DUE"; echo "$CRON_OVERDUE") | crontab -
 echo "==> Cron jobs installed"

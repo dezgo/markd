@@ -6,8 +6,6 @@ push covering all of them. See push.py — Markd never sends a user more than
 one notification at a time.
 """
 from collections import defaultdict
-from datetime import datetime, time as dt_time, timezone
-
 import cronlib
 from cronlib import log
 
@@ -16,21 +14,8 @@ cronlib.exit_unless_push_configured()
 from app import app
 from database import db
 from models import PushSubscription, Todo
+import scheduling
 from push import build_payload, send_to_user
-
-
-def due_now(todos, now_utc):
-    """Todos whose due_date + due_time (stored as UTC) has arrived."""
-    due = []
-    for todo in todos:
-        try:
-            h, m = map(int, todo.due_time.split(":"))
-        except (AttributeError, ValueError):
-            log(f"  todo {todo.id}: unparseable due_time {todo.due_time!r} — skipping")
-            continue
-        if datetime.combine(todo.due_date, dt_time(h, m)) <= now_utc:
-            due.append(todo)
-    return due
 
 
 def payload_for(todos, now_utc):
@@ -46,19 +31,27 @@ def payload_for(todos, now_utc):
 
 def run():
     with app.app_context():
-        # due_date + due_time are stored as UTC; compare against UTC now.
-        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        now_utc = scheduling.now_utc()
 
-        candidates = Todo.query.filter(
+        # due_at is a UTC instant in a real DATETIME column, so this is one
+        # indexed comparison. It used to load every dated todo and re-combine
+        # a date with a "HH:MM" string in Python to decide the same thing.
+        # All-day todos (due_on) are deliberately not here — they have no time
+        # to fire at, and the daily overdue nag covers them.
+        to_notify = Todo.query.filter(
             Todo.done == False,
             Todo.notified_at == None,
-            Todo.due_date != None,
-            Todo.due_time != None,
+            Todo.due_at != None,
+            Todo.due_at <= now_utc,
         ).all()
-        to_notify = due_now(candidates, now_utc)
 
+        # Scheduled-but-not-yet-fired, for context in the log: "0 due" alone
+        # cannot be told apart from "nothing is scheduled at all".
+        pending = Todo.query.filter(
+            Todo.done == False, Todo.notified_at == None, Todo.due_at != None,
+        ).count()
         sub_count = PushSubscription.query.count()
-        log(f"run: {len(candidates)} candidate(s), {len(to_notify)} due, {sub_count} sub(s) total")
+        log(f"run: {pending} scheduled, {len(to_notify)} due, {sub_count} sub(s) total")
         if not to_notify:
             return
 

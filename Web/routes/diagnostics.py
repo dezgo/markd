@@ -34,8 +34,7 @@ def diagnostics():
         Todo.user_id == uid,
         Todo.done == False,
         Todo.notified_at == None,
-        Todo.due_date != None,
-        Todo.due_time != None,
+        Todo.due_at != None,
     ).count()
 
     info = {

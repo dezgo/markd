@@ -1,22 +1,24 @@
 """Translating between how a todo is stored and how its owner sees it.
 
-A todo with a time is stored as a UTC instant split across two columns:
-`due_date` is a UTC calendar date and `due_time` a UTC wall clock. That is the
-right thing for the notifier, which only ever asks "is this instant in the
-past yet".
+A scheduled todo is stored one of two ways, and never both:
 
-It is the wrong frame for anything involving weekdays. "Repeats on Mon, Wed,
-Fri" is a statement about the owner's calendar, and for anyone east of UTC a
-morning alarm sits on the previous UTC day — so 07:00 Brisbane on a Wednesday
-is stored as Tuesday 21:00 UTC. Doing weekday arithmetic on the stored date
-therefore lands the user on Thursday, and every completion drags it another
-day out.
+    due_at  a UTC instant, for a todo with a time of day
+    due_on  a plain local calendar date, for an all-day todo
 
-Every function here is pure and takes the timezone explicitly, so the rules
-can be tested without a database or a request.
+The pair they replaced — due_date + due_time — used one column for both jobs:
+due_date alone meant a *local* date, but the moment due_time was set it meant a
+*UTC* date. Weekday recurrences were computed on that column, so for anyone
+east of UTC a 07:00 Monday task was stored on the previous UTC day and surfaced
+to the user on Tuesday.
+
+"Repeats on Mon, Wed, Fri" is a claim about the owner's calendar. Everything
+here exists to move between that calendar and the stored instant explicitly,
+rather than letting the two frames blur into one column. Every function is
+pure and takes the timezone as an argument, so the rules are testable without
+a database or a request.
 """
 
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 UTC = timezone.utc
@@ -43,39 +45,71 @@ def parse_hhmm(due_time: str):
         return None
 
 
-def local_date(due_date, due_time, tz):
-    """The calendar date the owner sees this todo on.
-
-    A todo with no time carries a plain local date already — there is no
-    instant to convert — so it is returned untouched.
-    """
-    t = parse_hhmm(due_time)
-    if due_date is None or t is None:
-        return due_date
-    return datetime.combine(due_date, t, tzinfo=UTC).astimezone(tz).date()
-
-
-def local_time_of_day(due_date, due_time, tz):
-    """The wall-clock time the owner sees, or None for a date-only todo."""
-    t = parse_hhmm(due_time)
-    if due_date is None or t is None:
-        return None
-    return datetime.combine(due_date, t, tzinfo=UTC).astimezone(tz).time()
-
-
-def to_storage(target_local_date, local_time, tz):
-    """(due_date, due_time) for a todo the owner should see on that local date.
-
-    `local_time` None means a date-only todo, which is stored as-is. Otherwise
-    the local wall time is re-anchored on the target date — rebuilt against the
-    zone rather than carried as a fixed offset, so a recurrence crossing a DST
-    boundary keeps its local time instead of sliding by an hour.
-    """
-    if local_time is None:
-        return target_local_date, None
-    utc_dt = datetime.combine(target_local_date, local_time, tzinfo=tz).astimezone(UTC)
-    return utc_dt.date(), utc_dt.strftime("%H:%M")
-
-
 def today_in(tz):
     return datetime.now(tz).date()
+
+
+def now_utc():
+    """Naive UTC, matching how datetimes are stored."""
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+def local_date_of(due_at, due_on, tz):
+    """The calendar date the owner sees this todo on, or None if unscheduled."""
+    if due_on is not None:
+        return due_on
+    if due_at is not None:
+        return due_at.replace(tzinfo=UTC).astimezone(tz).date()
+    return None
+
+
+def local_time_of(due_at, tz):
+    """The wall-clock time the owner sees, or None for an all-day todo."""
+    if due_at is None:
+        return None
+    return due_at.replace(tzinfo=UTC).astimezone(tz).time()
+
+
+def due_fields(local_day, local_time, tz):
+    """(due_at, due_on) for a todo the owner should see on that local date.
+
+    `local_time` None means an all-day todo, stored as the date itself.
+    Otherwise the wall time is anchored against the zone on that specific date
+    rather than carried as a fixed offset, so a recurrence crossing a DST
+    boundary keeps its local time instead of sliding by an hour.
+    """
+    if local_day is None:
+        return None, None
+    if local_time is None:
+        return None, local_day
+    aware = datetime.combine(local_day, local_time, tzinfo=tz)
+    return aware.astimezone(UTC).replace(tzinfo=None), None
+
+
+def next_occurrence_of(local_time, tz):
+    """The next local date on which `local_time` is still ahead.
+
+    A todo given a time but no date used to sit undated forever: it never
+    landed in a day group and the notifier, which requires an instant, skipped
+    it. Resolving it to today — or tomorrow, if that time has already gone —
+    is the reading that matches what the field is for.
+    """
+    now_local = datetime.now(tz)
+    day = now_local.date()
+    if local_time <= now_local.time():
+        day += timedelta(days=1)
+    return day
+
+
+def is_overdue(due_at, due_on, tz, reference_utc=None):
+    """True once this todo's due moment has passed.
+
+    Timed todos compare as instants. All-day todos are overdue only once the
+    day itself has passed in the owner's zone — an all-day task is not late at
+    00:01.
+    """
+    if due_at is not None:
+        return due_at < (reference_utc or now_utc())
+    if due_on is not None:
+        return due_on < today_in(tz)
+    return False

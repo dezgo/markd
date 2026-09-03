@@ -27,6 +27,26 @@ echo "==> Deploying $(git rev-parse --short HEAD) $(git log -1 --format=%s)"
 echo "==> Installing dependencies"
 "$APP_DIR/.venv/bin/pip" install -q -r "$APP_DIR/requirements.txt"
 
+# The app runs schema migrations at startup, so take a snapshot first. This is
+# the only copy standing between a bad migration and lost todos.
+echo "==> Backing up the database"
+DB="$APP_DIR/markd.db"
+if [ -f "$DB" ]; then
+  mkdir -p "$APP_DIR/backups"
+  BACKUP="$APP_DIR/backups/markd-$(date +%Y%m%d-%H%M%S).db"
+  # .backup is safe against a live writer; cp is the fallback if sqlite3 is absent.
+  if command -v sqlite3 >/dev/null 2>&1; then
+    sqlite3 "$DB" ".backup '$BACKUP'"
+  else
+    cp "$DB" "$BACKUP"
+  fi
+  echo "    $BACKUP"
+  # Keep the ten most recent.
+  ls -1t "$APP_DIR"/backups/markd-*.db 2>/dev/null | tail -n +11 | xargs -r rm -f
+else
+  echo "    no sqlite file at $DB — skipping (external database?)"
+fi
+
 echo "==> Restarting service"
 sudo systemctl restart "$APP"
 

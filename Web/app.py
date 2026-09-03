@@ -10,7 +10,7 @@ at `app:app` and the cron scripts do `from app import app`.
 
 import os
 import sys
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from flask import Flask
 from sqlalchemy import inspect as sa_inspect, text
@@ -21,13 +21,14 @@ import antispam
 import config
 import routes
 from database import db
-from models import User
+from models import SchemaMigration, Todo, User
+from scheduling import parse_hhmm
 
 # Bumped on every release. Sole source of truth — stamped into app.js and sw.js
 # when the app starts and exposed via /version for the client-side staleness
 # check. deploy.sh greps this line to confirm a deploy actually took, so it
 # stays a plain literal in this file.
-APP_VERSION = "v63"
+APP_VERSION = "v64"
 
 
 
@@ -41,6 +42,41 @@ def _ensure_columns(table: str, cols: dict):
                 conn.commit()
 
 
+def _run_once(name: str, migrate):
+    """Run a data migration the first time only, recording that it ran.
+
+    Adding a column is idempotent; a backfill is not. This one reads the legacy
+    due_date/due_time pair, so re-running it after the user cleared a due date
+    would put it back.
+    """
+    if db.session.get(SchemaMigration, name) is not None:
+        return
+    count = migrate()
+    db.session.add(SchemaMigration(name=name))
+    db.session.commit()
+    print(f"migration {name}: applied to {count} row(s)", file=sys.stderr, flush=True)
+
+
+def _backfill_due_columns() -> int:
+    """Split the legacy due_date/due_time pair into due_at / due_on.
+
+    A row with a time was always a UTC instant, so it becomes due_at directly.
+    A row without one was a plain local date, so it becomes due_on. The legacy
+    columns are left untouched, which is what makes rolling back to the
+    previous release safe.
+    """
+    todos = Todo.query.filter(
+        Todo.due_at.is_(None), Todo.due_on.is_(None), Todo.due_date.isnot(None),
+    ).all()
+    for todo in todos:
+        t = parse_hhmm(todo.due_time)
+        if t is None:
+            todo.due_on = todo.due_date
+        else:
+            todo.due_at = datetime.combine(todo.due_date, t)
+    return len(todos)
+
+
 def _bootstrap_schema():
     db.create_all()  # creates users, email_tokens, and any new tables
 
@@ -49,6 +85,8 @@ def _bootstrap_schema():
         "recurrence_unit":     "VARCHAR(20)",
         "recurrence_days":     "VARCHAR(15)",
         "due_time":            "VARCHAR(5)",
+        "due_at":              "DATETIME",
+        "due_on":              "DATE",
         "notes":               "TEXT",
         "spawned_from_id":     "INTEGER",
         "notified_at":         "DATETIME",
@@ -60,6 +98,8 @@ def _bootstrap_schema():
     _ensure_columns("user_settings", {
         "theme": "VARCHAR(16) NOT NULL DEFAULT 'indigo'",
     })
+
+    _run_once("2026_09_due_at_due_on", _backfill_due_columns)
 
     # Initial admin: convert single-password app into multi-user. Runs once.
     if User.query.count() == 0:

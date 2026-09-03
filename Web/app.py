@@ -9,7 +9,6 @@ from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from dateutil.relativedelta import relativedelta
 from sqlalchemy import inspect as sa_inspect, text
 
 from flask import (
@@ -37,138 +36,13 @@ load_dotenv()
 
 from database import db
 from models import (
-    EmailToken, PushSubscription, RECURRENCE_UNITS, SuppressedEmail, Todo, User, UserSettings,
+    EmailToken, PushSubscription, SuppressedEmail, Todo, User, UserSettings,
 )
+from recurrence import (
+    first_due_date, needs_seed_date, next_due_date, parse_recurrence, valid_time,
+)
+import scheduling
 import antispam
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _nth_last_weekday_of_month(year: int, month: int, weekday_py: int, n: int) -> date:
-    """Return the date in (year, month) that is the nth-to-last occurrence of weekday_py.
-    weekday_py uses Python convention (Mon=0..Sun=6). n=1 means last."""
-    import calendar
-    last_day = calendar.monthrange(year, month)[1]
-    d = date(year, month, last_day)
-    while d.weekday() != weekday_py:
-        d -= timedelta(days=1)
-    d -= timedelta(days=7 * (n - 1))
-    return d
-
-
-def _weekday_set(days_csv: str) -> set:
-    """CSV of JS weekday numbers (Sun=0..Sat=6) -> set of ints."""
-    return {int(d) for d in days_csv.split(",") if d}
-
-
-def _js_weekday(d: date) -> int:
-    """Python weekday (Mon=0..Sun=6) -> JS weekday (Sun=0..Sat=6)."""
-    return (d.weekday() + 1) % 7
-
-
-def first_due_date(base: date, days_csv: str) -> date:
-    """First date on or after `base` falling on one of the CSV weekdays.
-
-    Used to seed a start date for a "on set weekdays" task the user created
-    without picking one; without a due_date such a task never surfaces in a
-    day group and never notifies.
-    """
-    days = _weekday_set(days_csv)
-    for offset in range(0, 7):
-        candidate = base + timedelta(days=offset)
-        if _js_weekday(candidate) in days:
-            return candidate
-    return base
-
-
-def next_due_date(base: date, interval: int, unit: str, days_csv: str = None) -> date:
-    if unit in ("monthly-last", "monthly-2last") and days_csv:
-        js_weekday = int(days_csv.split(",")[0])
-        py_weekday = (js_weekday - 1) % 7  # JS Sun=0 -> Py Sun=6; JS Mon=1 -> Py Mon=0
-        n = 1 if unit == "monthly-last" else 2
-        y, m = base.year, base.month
-        candidate = _nth_last_weekday_of_month(y, m, py_weekday, n)
-        if candidate <= base:
-            if m == 12:
-                y, m = y + 1, 1
-            else:
-                m += 1
-            candidate = _nth_last_weekday_of_month(y, m, py_weekday, n)
-        return candidate
-
-    if unit == "weeks" and days_csv:
-        days = _weekday_set(days_csv)
-        for offset in range(1, 8):
-            candidate = base + timedelta(days=offset)
-            if _js_weekday(candidate) in days:
-                return candidate
-        return base + timedelta(days=7)
-
-    if unit == "days":
-        return base + timedelta(days=interval)
-    if unit == "weeks":
-        return base + timedelta(weeks=interval)
-    if unit == "months":
-        return base + relativedelta(months=interval)
-    if unit == "years":
-        return base + relativedelta(years=interval)
-    return base
-
-
-def _valid_time(t: str) -> bool:
-    try:
-        h, m = t.split(":")
-        return 0 <= int(h) <= 23 and 0 <= int(m) <= 59
-    except Exception:
-        return False
-
-
-def parse_recurrence(data: dict):
-    interval = data.get("recurrence_interval")
-    unit = data.get("recurrence_unit") or None
-    days = data.get("recurrence_days")
-
-    if interval is None and unit is None and not days:
-        return None, None, None, None
-
-    if unit in ("monthly-last", "monthly-2last"):
-        if not days:
-            return None, None, None, f"recurrence_days (single weekday) is required for {unit}"
-        try:
-            day_list = [int(d) for d in str(days).split(",") if d != ""]
-        except ValueError:
-            return None, None, None, "recurrence_days must be a weekday number 0-6"
-        if len(day_list) != 1 or not 0 <= day_list[0] <= 6:
-            return None, None, None, "recurrence_days must be a single weekday number 0-6"
-        return None, unit, str(day_list[0]), None
-
-    if unit == "weeks" and days is not None and not str(days).strip():
-        # Distinguish "weekday recurrence with nothing picked" from "every N
-        # weeks"; otherwise this falls through to a misleading interval error.
-        return None, None, None, "recurrence_days must name at least one weekday (0-6)"
-
-    if days and unit == "weeks":
-        try:
-            day_set = sorted({int(d) for d in str(days).split(",") if d != ""})
-        except ValueError:
-            return None, None, None, "recurrence_days must be comma-separated weekday numbers (0-6)"
-        if not day_set or any(d < 0 or d > 6 for d in day_set):
-            return None, None, None, "recurrence_days values must be 0-6 (Sun=0..Sat=6)"
-        return 1, "weeks", ",".join(str(d) for d in day_set), None
-
-    try:
-        interval = int(interval)
-        if interval < 1:
-            raise ValueError
-    except (TypeError, ValueError):
-        return None, None, None, "recurrence_interval must be a positive integer"
-
-    if unit not in RECURRENCE_UNITS:
-        return None, None, None, f"recurrence_unit must be one of {sorted(RECURRENCE_UNITS)}"
-
-    return interval, unit, None, None
 
 
 # ---------------------------------------------------------------------------
@@ -458,7 +332,7 @@ def send_reset_email(user: User):
 # Bumped on every release. Sole source of truth — stamped into app.js and sw.js
 # at server startup (see _versioned below) and exposed via /version for the
 # client-side staleness check.
-APP_VERSION = "v61"
+APP_VERSION = "v62"
 
 THEMES = {"indigo", "mint", "sunset", "berry", "slate"}
 
@@ -805,6 +679,28 @@ def app_home():
 # Todo API
 # ---------------------------------------------------------------------------
 
+def _user_tz(user_id: int):
+    """The owner's timezone, for anything that reasons about their calendar.
+
+    Weekday recurrences are the reason this matters: the stored due_date is a
+    UTC date, and east of UTC a morning todo sits on the previous UTC day, so
+    weekday maths done on the raw column lands a day out. See scheduling.py.
+    """
+    s = db.session.get(UserSettings, user_id)
+    return scheduling.resolve_tz(s.timezone if s else None)
+
+
+def _seed_weekday_start(due_date, due_time, days_csv, tz):
+    """Give a weekday recurrence its first occurrence, in the owner's calendar.
+
+    Only called when no date was supplied, which is also the only case where
+    due_time is a local wall clock rather than a UTC one — the client converts
+    to UTC only when it sends both fields.
+    """
+    target = first_due_date(scheduling.today_in(tz), days_csv)
+    return scheduling.to_storage(target, scheduling.parse_hhmm(due_time), tz)
+
+
 @app.route("/todos", methods=["GET"])
 @require_api_key
 def get_todos():
@@ -828,7 +724,7 @@ def create_todo():
             return jsonify({"error": "due_date must be YYYY-MM-DD"}), 400
 
     due_time = data.get("due_time") or None
-    if due_time and not _valid_time(due_time):
+    if due_time and not valid_time(due_time):
         return jsonify({"error": "due_time must be HH:MM"}), 400
 
     notes = data.get("notes") or None
@@ -839,8 +735,9 @@ def create_todo():
 
     # A weekday recurrence with no start date would sit undated forever: it never
     # lands in a day group and the notifier skips it. Seed the first occurrence.
-    if due_date is None and unit == "weeks" and days_csv:
-        due_date = first_due_date(date.today(), days_csv)
+    if due_date is None and needs_seed_date(unit, days_csv):
+        due_date, due_time = _seed_weekday_start(
+            due_date, due_time, days_csv, _user_tz(current_user_id()))
 
     todo = Todo(
         user_id=current_user_id(),
@@ -871,21 +768,29 @@ def update_todo(todo_id):
     if "done" in data:
         new_done = bool(data["done"])
         if new_done and not todo.done and todo.recurrence_interval and todo.recurrence_unit:
-            base = todo.due_date or date.today()
-            today = date.today()
+            # Advance in the owner's calendar, not UTC: "every Mon, Wed, Fri"
+            # is a statement about their week, and a timed todo's stored date
+            # can be the day before the one they see.
+            tz = _user_tz(todo.user_id)
+            today_local = scheduling.today_in(tz)
+            local_time = scheduling.local_time_of_day(todo.due_date, todo.due_time, tz)
+            base = scheduling.local_date(todo.due_date, todo.due_time, tz) or today_local
+
             nxt = next_due_date(base, todo.recurrence_interval, todo.recurrence_unit, todo.recurrence_days)
             # Fast-forward past any overdue occurrences so the spawned instance is in the future.
-            while nxt <= today:
+            while nxt <= today_local:
                 nxt = next_due_date(nxt, todo.recurrence_interval, todo.recurrence_unit, todo.recurrence_days)
+            next_date, next_time = scheduling.to_storage(nxt, local_time, tz)
+
             db.session.add(Todo(
                 user_id=todo.user_id,
                 title=todo.title,
                 notes=todo.notes,
-                due_time=todo.due_time,
+                due_time=next_time,
                 recurrence_interval=todo.recurrence_interval,
                 recurrence_unit=todo.recurrence_unit,
                 recurrence_days=todo.recurrence_days,
-                due_date=nxt,
+                due_date=next_date,
                 spawned_from_id=todo.id,
             ))
         elif not new_done and todo.done and todo.recurrence_interval:
@@ -904,7 +809,7 @@ def update_todo(todo_id):
 
     if "due_time" in data:
         due_time = data["due_time"] or None
-        if due_time and not _valid_time(due_time):
+        if due_time and not valid_time(due_time):
             return jsonify({"error": "due_time must be HH:MM"}), 400
         todo.due_time = due_time
 
@@ -921,8 +826,9 @@ def update_todo(todo_id):
                 return jsonify({"error": "due_date must be YYYY-MM-DD"}), 400
 
     # Same invariant as create_todo: a weekday recurrence always has a start date.
-    if todo.due_date is None and todo.recurrence_unit == "weeks" and todo.recurrence_days:
-        todo.due_date = first_due_date(date.today(), todo.recurrence_days)
+    if todo.due_date is None and needs_seed_date(todo.recurrence_unit, todo.recurrence_days):
+        todo.due_date, todo.due_time = _seed_weekday_start(
+            todo.due_date, todo.due_time, todo.recurrence_days, _user_tz(todo.user_id))
 
     todo.updated_at = datetime.now(timezone.utc)
     db.session.commit()
@@ -1024,7 +930,7 @@ def update_settings():
 
     if "overdue_check_time" in data:
         t = data["overdue_check_time"]
-        if not isinstance(t, str) or not _valid_time(t):
+        if not isinstance(t, str) or not valid_time(t):
             return jsonify({"error": "overdue_check_time must be HH:MM"}), 400
         s.overdue_check_time = t
 

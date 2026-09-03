@@ -22,7 +22,8 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 from app import app
 from database import db
-from models import EmailToken, PushSubscription, RateEvent, Todo, User, UserSettings
+from accounts import delete_user
+from models import EmailToken, RateEvent, User
 
 PURGE_UNVERIFIED_DAYS = int(os.environ.get("PURGE_UNVERIFIED_DAYS", "7"))
 
@@ -48,13 +49,10 @@ def purge_unverified(cutoff):
             f"(created {user.created_at:%Y-%m-%d})")
         if DRY_RUN:
             continue
-        # Explicit cleanup of dependents — there are no cascade rules on these
-        # relationships, so orphan rows would otherwise be left behind.
-        EmailToken.query.filter_by(user_id=user.id).delete()
-        PushSubscription.query.filter_by(user_id=user.id).delete()
-        UserSettings.query.filter_by(user_id=user.id).delete()
-        Todo.query.filter_by(user_id=user.id).delete()
-        db.session.delete(user)
+        # There are no cascade rules on these relationships, so dependents are
+        # cleared explicitly — see accounts.delete_user, which is also what the
+        # bounce webhook uses so the two paths cannot drift apart again.
+        delete_user(user)
 
     if not DRY_RUN:
         db.session.commit()

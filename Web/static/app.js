@@ -117,8 +117,10 @@ function syncRecurControls() {
   intervalInput.hidden = !takesInterval;
   intervalLabel.hidden = !takesInterval;
   newRecurUnit.setCustomValidity('');
+  monthlyWeekdaySelect.setCustomValidity('');
 }
 newRecurUnit.addEventListener('change', syncRecurControls);
+monthlyWeekdaySelect.addEventListener('change', () => monthlyWeekdaySelect.setCustomValidity(''));
 syncRecurControls();
 
 async function api(path, options = {}) {
@@ -373,7 +375,7 @@ function resetFormFields() {
   newRecurInterval.value = '';
   setSelectedDays(newDayToggles, '');
   newRecurUnit.value = '';
-  monthlyWeekdaySelect.value = '1';
+  monthlyWeekdaySelect.value = '';
   syncRecurControls();
   setFormMode('someday');
 }
@@ -406,9 +408,9 @@ function populateFormFromTodo(todo) {
   newRecurUnit.value = todo.recurrence_unit || '';
   newRecurInterval.value = isWeekdayRecur ? '' : (todo.recurrence_interval || '');
   if (todo.recurrence_unit === 'monthly-last' || todo.recurrence_unit === 'monthly-2last') {
-    monthlyWeekdaySelect.value = (todo.recurrence_days || '1').split(',')[0];
+    monthlyWeekdaySelect.value = (todo.recurrence_days || '').split(',')[0];
   } else {
-    monthlyWeekdaySelect.value = '1';
+    monthlyWeekdaySelect.value = '';
   }
   setSelectedDays(newDayToggles, isWeekdayRecur ? todo.recurrence_days : '');
   syncRecurControls();
@@ -658,6 +660,16 @@ addForm.addEventListener('submit', async e => {
   // A repeat unit with neither a count nor any day ticked would silently save
   // as "does not repeat"; say so instead of dropping it on the floor.
   const unitPicked = newRecurUnit.value;
+  // "last <day> of month" used to default to Monday with no prompt, so a task
+  // titled "last friday of month" quietly saved as last Monday. Make the
+  // choice explicit rather than guessing one.
+  if (formMode === 'schedule'
+      && (unitPicked === 'monthly-last' || unitPicked === 'monthly-2last')
+      && !monthlyWeekdaySelect.value) {
+    monthlyWeekdaySelect.setCustomValidity('Pick which day of the month this repeats on.');
+    monthlyWeekdaySelect.reportValidity();
+    return;
+  }
   if (formMode === 'schedule' && UNITS_WITH_INTERVAL.has(unitPicked)
       && !newRecurInterval.value
       && !(unitPicked === 'weeks' && getSelectedDays(newDayToggles).length > 0)) {

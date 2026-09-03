@@ -49,6 +49,11 @@ RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 EMAIL_FROM = os.environ.get("EMAIL_FROM", "Markd <markd@mail.appfoundry.cc>")
 RESEND_WEBHOOK_SECRET = os.environ.get("RESEND_WEBHOOK_SECRET", "")
 
+# --- One-time bootstrap of the first account, when converting a fresh install
+# --- from the old single-password app. Read once and then irrelevant.
+INITIAL_ADMIN_EMAIL = os.environ.get("INITIAL_ADMIN_EMAIL", "").strip().lower()
+INITIAL_ADMIN_PASSWORD = os.environ.get("UI_PASSWORD", "")
+
 # --- Misc
 NOTIFICATIONS_LOG = os.environ.get("NOTIFICATIONS_LOG", "/var/log/markd/notifications.log")
 THEMES = {"indigo", "mint", "sunset", "berry", "slate"}

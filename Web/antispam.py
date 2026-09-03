@@ -64,6 +64,13 @@ MAX_FORM_AGE_SECONDS = 3600
 LIMIT_SIGNUP_ATTEMPT_IP_HOUR = (15, timedelta(hours=1))
 LIMIT_SIGNUP_IP_HOUR = (3, timedelta(hours=1))
 LIMIT_SIGNUP_IP_DAY = (10, timedelta(days=1))
+# Login was the one auth route with no limit at all, which made it the cheapest
+# way to test a stolen password list against real accounts. Two counters, for
+# the two shapes of attack: many guesses from one source, and many guesses
+# against one account from a botnet. Both count only failures, so a working
+# session's normal re-logins never trip them.
+LIMIT_LOGIN_IP_15MIN = (10, timedelta(minutes=15))
+LIMIT_LOGIN_ACCOUNT_15MIN = (5, timedelta(minutes=15))
 LIMIT_FORGOT_IP_HOUR = (5, timedelta(hours=1))
 LIMIT_RESEND_IP_HOUR = (3, timedelta(hours=1))
 # Circuit breaker: a distributed botnet defeats per-IP limits, but it cannot get
@@ -165,6 +172,19 @@ def signup_send_rate_ok(ip: str) -> bool:
         rate_exceeded(f"signup:sent:{ip}", LIMIT_SIGNUP_IP_HOUR)
         or rate_exceeded(f"signup:sent:{ip}", LIMIT_SIGNUP_IP_DAY)
     )
+
+
+def login_rate_ok(ip: str, email: str) -> bool:
+    """False once this IP, or this account, has burned its failed-login budget."""
+    return not (
+        rate_exceeded(f"login:ip:{ip}", LIMIT_LOGIN_IP_15MIN)
+        or rate_exceeded(f"login:acct:{email}", LIMIT_LOGIN_ACCOUNT_15MIN)
+    )
+
+
+def record_login_failure(ip: str, email: str) -> None:
+    record_event(f"login:ip:{ip}")
+    record_event(f"login:acct:{email}")
 
 
 def global_mail_rate_ok() -> bool:

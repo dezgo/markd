@@ -13,14 +13,14 @@
     {% if sent %}
       <h2 class="auth-heading">Check your email</h2>
       <p class="auth-body">If an account with that email exists, we sent a password reset link.</p>
-      <p class="auth-link"><a href="{{ url_for('login') }}">Back to sign in</a></p>
+      <p class="auth-link"><a href="{{ url_for('auth.login') }}">Back to sign in</a></p>
     {% else %}
       <form method="post" autocomplete="on">
         <label for="email">Email</label>
         <input id="email" name="email" type="email" autocomplete="email" autofocus required>
         <button type="submit">Send reset link</button>
       </form>
-      <p class="auth-link"><a href="{{ url_for('login') }}">Back to sign in</a></p>
+      <p class="auth-link"><a href="{{ url_for('auth.login') }}">Back to sign in</a></p>
     {% endif %}
   </div>
 </body>

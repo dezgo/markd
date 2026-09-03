@@ -90,22 +90,27 @@ function wireDayToggles(container) {
   container.querySelectorAll('.day-toggle').forEach(b => {
     b.addEventListener('click', () => {
       b.classList.toggle('is-on');
-      newRecurUnit.setCustomValidity('');  // clear the "pick a weekday" warning
+      syncRecurControls();
     });
   });
 }
 wireDayToggles(newDayToggles);
 
-// Units that take an "every N" count. The other choices ('' = never, weekdays,
-// monthly-last, monthly-2last) carry their own control instead, so each option
-// in the dropdown reveals exactly one set of inputs.
+// Units that pair with an "every N" count. '' (never) and the two monthly
+// weekday rules carry their own control instead.
 const UNITS_WITH_INTERVAL = new Set(['days', 'weeks', 'months', 'years']);
 
 function syncRecurControls() {
   const unit = newRecurUnit.value;
   const isMonthlyWeekday = unit === 'monthly-last' || unit === 'monthly-2last';
-  const takesInterval = UNITS_WITH_INTERVAL.has(unit);
-  newDayTogglesWrap.hidden = unit !== 'weekdays';
+  // Weekly repeats offer the day picker; ticking any day makes the schedule
+  // fully determined, so "every N" stops applying and gets out of the way
+  // rather than sitting there implying an interval the server will discard.
+  const isWeekly = unit === 'weeks';
+  const hasDays = getSelectedDays(newDayToggles).length > 0;
+  const takesInterval = UNITS_WITH_INTERVAL.has(unit) && !(isWeekly && hasDays);
+
+  newDayTogglesWrap.hidden = !isWeekly;
   monthlyWeekdayWrap.hidden = !isMonthlyWeekday;
   const intervalInput = recurIntervalRow.querySelector('#new-recur-interval');
   const intervalLabel = recurIntervalRow.querySelector('.form-row-label');
@@ -395,17 +400,17 @@ function populateFormFromTodo(todo) {
   }
 
   newNotes.value = todo.notes || '';
-  // Weekday recurrence is stored as unit 'weeks' + days; the form shows it as
-  // its own 'weekdays' choice, and its interval is a synthetic 1 worth hiding.
+  // A weekday recurrence stores a synthetic interval of 1 that means nothing;
+  // showing it would put "every 1 weeks" next to the ticked days.
   const isWeekdayRecur = todo.recurrence_unit === 'weeks' && !!todo.recurrence_days;
-  newRecurUnit.value = isWeekdayRecur ? 'weekdays' : (todo.recurrence_unit || '');
+  newRecurUnit.value = todo.recurrence_unit || '';
   newRecurInterval.value = isWeekdayRecur ? '' : (todo.recurrence_interval || '');
   if (todo.recurrence_unit === 'monthly-last' || todo.recurrence_unit === 'monthly-2last') {
     monthlyWeekdaySelect.value = (todo.recurrence_days || '1').split(',')[0];
   } else {
     monthlyWeekdaySelect.value = '1';
   }
-  setSelectedDays(newDayToggles, todo.recurrence_days);
+  setSelectedDays(newDayToggles, isWeekdayRecur ? todo.recurrence_days : '');
   syncRecurControls();
 
   setFormMode(isSomeday(todo) ? 'someday' : 'schedule');
@@ -622,7 +627,7 @@ function buildPayload({ forUpdate }) {
       payload.recurrence_unit = unit;
       payload.recurrence_days = monthlyWeekdaySelect.value;
       if (forUpdate) payload.recurrence_interval = null;
-    } else if (unit === 'weekdays') {
+    } else if (unit === 'weeks' && getSelectedDays(newDayToggles).length > 0) {
       payload.recurrence_unit = 'weeks';
       payload.recurrence_days = getSelectedDays(newDayToggles).join(',');
       if (forUpdate) payload.recurrence_interval = null;
@@ -650,11 +655,16 @@ addForm.addEventListener('submit', async e => {
   e.preventDefault();
   if (!newTitle.value.trim()) return;
 
-  // "on set weekdays" with nothing ticked would reach the API as an unusable
-  // recurrence; catch it here so the user gets a message instead of a dead form.
-  if (formMode === 'schedule' && newRecurUnit.value === 'weekdays'
-      && getSelectedDays(newDayToggles).length === 0) {
-    newRecurUnit.setCustomValidity('Pick at least one weekday, or set Repeats to never.');
+  // A repeat unit with neither a count nor any day ticked would silently save
+  // as "does not repeat"; say so instead of dropping it on the floor.
+  const unitPicked = newRecurUnit.value;
+  if (formMode === 'schedule' && UNITS_WITH_INTERVAL.has(unitPicked)
+      && !newRecurInterval.value
+      && !(unitPicked === 'weeks' && getSelectedDays(newDayToggles).length > 0)) {
+    newRecurUnit.setCustomValidity(
+      unitPicked === 'weeks'
+        ? 'Tick the days it repeats on, or enter a number of weeks.'
+        : `Enter how many ${unitPicked} between repeats, or set Repeats to never.`);
     newRecurUnit.reportValidity();
     return;
   }

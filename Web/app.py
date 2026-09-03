@@ -242,8 +242,10 @@ with app.app_context():
             db.session.add(admin)
             db.session.commit()
             with db.engine.connect() as conn:
-                conn.execute(text(f"UPDATE todos SET user_id = {admin.id} WHERE user_id IS NULL"))
-                conn.execute(text(f"UPDATE push_subscriptions SET user_id = {admin.id} WHERE user_id IS NULL"))
+                conn.execute(text("UPDATE todos SET user_id = :uid WHERE user_id IS NULL"),
+                             {"uid": admin.id})
+                conn.execute(text("UPDATE push_subscriptions SET user_id = :uid WHERE user_id IS NULL"),
+                             {"uid": admin.id})
                 conn.commit()
             print(f"Created initial admin user: {admin_email}", file=sys.stderr, flush=True)
         else:
@@ -443,7 +445,7 @@ def send_reset_email(user: User):
         intro="Someone (hopefully you) requested a password reset for your Markd account. Click below to set a new one.",
         button_label="Set new password",
         button_url=url,
-        expiry_note="This link expires in 30 minutes.",
+        expiry_note="This link expires in 1 hour.",
         extra_note="If you didn't request this, just ignore the email.",
     )
     return _send_email(user.email, "Reset your Markd password", html)

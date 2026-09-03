@@ -1,5 +1,10 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Must outrank every author `display` rule below, or `el.hidden = true` is
+   silently ignored. This is not defensive: .form-field sets display:flex, and
+   for months that left the weekday tickboxes on screen permanently. */
+[hidden] { display: none !important; }
+
 :root {
   --accent: #6366f1;
   --accent-dark: #4f46e5;
@@ -428,7 +433,6 @@ body.form-open .fab { display: none; }
   flex-direction: column;
   overflow: hidden;
 }
-.form-sheet[hidden] { display: none; }
 
 .form-sheet-header {
   display: flex;
@@ -530,10 +534,8 @@ body.form-open .fab { display: none; }
   align-self: center;
   flex-shrink: 0;
 }
-.form-row-label[hidden] { display: none; }
 
 #schedule-section { display: flex; flex-direction: column; gap: 1.1rem; }
-#schedule-section[hidden] { display: none; }
 
 /* Segmented Someday / Schedule control */
 .form-mode-toggle {
@@ -576,7 +578,6 @@ body.form-open .fab { display: none; }
   transition: background 0.15s, border-color 0.15s;
 }
 .form-duplicate-btn:hover { background: rgba(var(--accent-rgb), 0.08); border-color: var(--accent); }
-.form-duplicate-btn[hidden] { display: none; }
 .form-duplicate-btn + .form-delete-btn { margin-top: 0.6rem; }
 
 .form-delete-btn {
@@ -592,7 +593,6 @@ body.form-open .fab { display: none; }
   transition: background 0.15s, color 0.15s;
 }
 .form-delete-btn:hover { background: var(--danger); color: #fff; }
-.form-delete-btn[hidden] { display: none; }
 
 .day-toggles {
   display: flex;
@@ -660,7 +660,6 @@ body.form-open .fab { display: none; }
   box-shadow: 0 6px 18px rgba(var(--accent-rgb), 0.25);
 }
 
-.notif-banner[hidden] { display: none; }
 
 .notif-banner.is-install {
   background: linear-gradient(135deg, #4338ca, #6366f1);
@@ -956,7 +955,6 @@ body.form-open .fab { display: none; }
   text-align: center;
   margin: 3rem 1rem 0;
 }
-.empty-msg[hidden] { display: none; }
 .empty-msg .empty-emoji { font-size: 2.5rem; line-height: 1; margin-bottom: 0.3rem; }
 .empty-msg .empty-title {
   font-size: 1.1rem;
@@ -992,7 +990,6 @@ body.form-open .fab { display: none; }
   padding: 1rem;
   overflow-y: auto;
 }
-.install-guide[hidden] { display: none; }
 
 .install-card {
   width: 100%;

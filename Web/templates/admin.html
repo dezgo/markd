@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Markd — Admin</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; padding: 1rem; max-width: 960px; margin: 0 auto; color: #111827; background: #f9fafb; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1rem; margin: 1.5rem 0 0.6rem; color: #374151; }
+    .sub { color: #6b7280; font-size: 0.85rem; margin-bottom: 1rem; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.6rem; }
+    .tile { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.7rem 0.8rem; }
+    .tile .n { font-size: 1.4rem; font-weight: 700; line-height: 1.1; }
+    .tile .l { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; margin-top: 0.15rem; }
+    .scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+    th { text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: #6b7280; padding: 0.5rem 0.7rem; background: #f3f4f6; white-space: nowrap; }
+    td { padding: 0.5rem 0.7rem; border-top: 1px solid #e5e7eb; font-size: 0.85rem; white-space: nowrap; }
+    .ok   { color: #059669; font-weight: 600; }
+    .bad  { color: #dc2626; font-weight: 600; }
+    .warn { color: #b45309; font-weight: 600; }
+    .muted { color: #9ca3af; }
+    .note { background: #fff; border: 1px solid #e5e7eb; border-left: 3px solid #b45309; border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.85rem; margin-top: 0.8rem; }
+    a { color: #6366f1; }
+  </style>
+</head>
+<body>
+  <h1>Markd Admin</h1>
+  <p class="sub">
+    Instance-wide usage. &ldquo;Active&rdquo; means a todo touched in the last
+    {{ stats.active_window_days }} days. &middot; <a href="/diagnostics">Diagnostics</a>
+    &middot; <a href="/app">Back to app</a>
+  </p>
+
+  <div class="tiles">
+    <div class="tile"><div class="n">{{ stats.user_count }}</div><div class="l">Accounts</div></div>
+    <div class="tile"><div class="n">{{ stats.active_count }}</div><div class="l">Active</div></div>
+    <div class="tile"><div class="n">{{ stats.verified_count }}</div><div class="l">Verified</div></div>
+    <div class="tile"><div class="n">{{ stats.todo_count }}</div><div class="l">Todos</div></div>
+    <div class="tile"><div class="n">{{ stats.subscription_count }}</div><div class="l">Push subs</div></div>
+    <div class="tile"><div class="n">{{ stats.signups_7d }}</div><div class="l">Signups 7d</div></div>
+    <div class="tile"><div class="n">{{ stats.mail_24h }}</div><div class="l">Mail 24h</div></div>
+    <div class="tile"><div class="n">{{ stats.suppressed }}</div><div class="l">Suppressed</div></div>
+  </div>
+
+  {% if stats.orphan_subscriptions %}
+    <div class="note">
+      <strong>{{ stats.orphan_subscriptions }} push subscription(s)</strong> belong to
+      user rows that no longer exist. These are left over from when the bounce
+      webhook deleted an account without clearing its dependents; they are inert
+      and safe to delete.
+    </div>
+  {% endif %}
+
+  <h2>Accounts</h2>
+  <div class="scroll">
+    <table>
+      <tr>
+        <th>#</th><th>Email</th><th>Verified</th><th>Todos</th><th>Active</th>
+        <th>Push</th><th>Timezone</th><th>Nag</th><th>Last activity</th><th>Joined</th>
+      </tr>
+      {% for r in stats.rows %}
+        <tr>
+          <td class="muted">{{ r.id }}</td>
+          <td>{{ r.email }}</td>
+          <td class="{{ 'ok' if r.verified else 'warn' }}">{{ 'yes' if r.verified else 'no' }}</td>
+          <td>{{ r.todos_total }}</td>
+          <td>{{ r.todos_active }}</td>
+          <td>{{ r.subscriptions }}</td>
+          <td class="muted">{{ r.timezone }}</td>
+          <td class="muted">{{ 'on' if r.nag_enabled else 'off' }}</td>
+          <td class="{{ '' if r.is_active else 'muted' }}">
+            {{ r.last_seen.strftime('%Y-%m-%d %H:%M') if r.last_seen else 'never' }}
+          </td>
+          <td class="muted">{{ r.created_at.strftime('%Y-%m-%d') }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  </div>
+  <p class="sub" style="margin-top:0.6rem">Times are UTC.</p>
+</body>
+</html>

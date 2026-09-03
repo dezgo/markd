@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, render_template
 
 import antispam
-from accounts import current_user, current_user_id, require_session
+from accounts import current_user, current_user_id, is_admin, require_session
 from config import EMAIL_FROM, NOTIFICATIONS_LOG, RESEND_API_KEY,     RESEND_WEBHOOK_SECRET, VAPID_CONTACT, VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY
 from models import PushSubscription, SuppressedEmail, Todo, User
 
@@ -38,6 +38,7 @@ def diagnostics():
     ).count()
 
     info = {
+        "is_admin": is_admin(),
         "user_email": current_user().email if current_user() else "(none)",
         "user_count": User.query.count(),
         "vapid_configured": bool(VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY),

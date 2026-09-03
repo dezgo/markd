@@ -20,6 +20,9 @@
 </head>
 <body>
   <h1>Markd Diagnostics</h1>
+  {% if info.is_admin %}
+    <p style="margin-bottom:1rem;font-size:0.85rem;"><a href="/admin">Instance usage &rarr;</a></p>
+  {% endif %}
   <table>
     <tr>
       <td>Logged in as</td>

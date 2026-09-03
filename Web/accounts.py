@@ -55,6 +55,28 @@ def require_api_key(f):
     return decorated
 
 
+# The initial admin. There is no roles table and no need for one on a personal
+# instance; user 1 is who the bootstrap creates and who API-key requests act as.
+ADMIN_USER_ID = 1
+
+
+def is_admin() -> bool:
+    return current_user_id() == ADMIN_USER_ID
+
+
+def require_admin(f):
+    """Admin-only page. Answers 404 rather than 403 to anyone else, so the
+    route's existence is not advertised to ordinary accounts."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("auth.login", next=request.path))
+        if not is_admin():
+            abort(404)
+        return f(*args, **kwargs)
+    return decorated
+
+
 def get_or_create_settings(user_id: int) -> UserSettings:
     s = db.session.get(UserSettings, user_id)
     if s is None:

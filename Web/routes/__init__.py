@@ -4,7 +4,7 @@ One import site for every route module, so app.py does not have to know what
 they are called or what order they load in.
 """
 
-from routes import auth, diagnostics, pages, push, settings, todos, webhooks
+from routes import admin, auth, diagnostics, pages, push, settings, todos, webhooks
 
 BLUEPRINTS = (
     pages.bp,
@@ -14,6 +14,7 @@ BLUEPRINTS = (
     push.bp,
     settings.bp,
     diagnostics.bp,
+    admin.bp,
 )
 
 

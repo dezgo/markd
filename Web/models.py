@@ -1,8 +1,6 @@
 from datetime import datetime, timezone
 from database import db
 
-RECURRENCE_UNITS = {"days", "weeks", "months", "years", "monthly-last", "monthly-2last"}
-
 
 class User(db.Model):
     __tablename__ = "users"

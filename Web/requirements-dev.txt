@@ -1,0 +1,4 @@
+# Test-only dependencies. Not installed on prod — deploy.sh reads
+# requirements.txt alone.
+-r requirements.txt
+pytest>=7.4

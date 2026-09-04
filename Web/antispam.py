@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from flask import request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
+import config
 from database import db
 from models import RateEvent, SuppressedEmail
 
@@ -44,8 +45,10 @@ except ImportError:  # pragma: no cover - dnspython missing means MX checks are 
 # Config
 # ---------------------------------------------------------------------------
 
-TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "")
-TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+# Mirrored from config so tests can patch them, but config is what reads the
+# environment — see the note there about import order.
+TURNSTILE_SITE_KEY = config.TURNSTILE_SITE_KEY
+TURNSTILE_SECRET_KEY = config.TURNSTILE_SECRET_KEY
 TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 
 # Minimum seconds between the form being served and submitted. Humans take
@@ -227,7 +230,7 @@ DISPOSABLE_DOMAINS = {
 def _load_extra_disposable() -> set:
     """Optional newline-delimited blocklist file, so the list can grow without
     a redeploy."""
-    path = os.environ.get("DISPOSABLE_DOMAINS_FILE", "")
+    path = config.DISPOSABLE_DOMAINS_FILE
     if not path or not os.path.exists(path):
         return set()
     try:

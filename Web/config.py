@@ -54,6 +54,17 @@ RESEND_WEBHOOK_SECRET = os.environ.get("RESEND_WEBHOOK_SECRET", "")
 INITIAL_ADMIN_EMAIL = os.environ.get("INITIAL_ADMIN_EMAIL", "").strip().lower()
 INITIAL_ADMIN_PASSWORD = os.environ.get("UI_PASSWORD", "")
 
+# --- Signup CAPTCHA. Inert until both are set — see antispam.py layer 4.
+# --- Read here rather than in antispam because app.py imports antispam first,
+# --- so a module-level os.environ read there happens before .env is loaded.
+# --- Under systemd that is masked by EnvironmentFile; anywhere else the keys
+# --- would come back empty and the gate would silently stay off.
+TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "")
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+
+# --- Optional newline-delimited blocklist, so the list can grow without a deploy.
+DISPOSABLE_DOMAINS_FILE = os.environ.get("DISPOSABLE_DOMAINS_FILE", "")
+
 # --- Maintenance. A signup left unverified this long was never a person; the
 # --- daily purge deletes it. See purge_stale_signups.py.
 PURGE_UNVERIFIED_DAYS = int(os.environ.get("PURGE_UNVERIFIED_DAYS", "7"))

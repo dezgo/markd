@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 
 import config  # noqa: F401  — imported for its .env side effect
 
+# Must be set before `from app import app`, which is what emits them.
+config.QUIET_STARTUP = True
+
 
 def log(msg):
     """Timestamped line into the cron log that /diagnostics tails."""

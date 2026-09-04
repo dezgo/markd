@@ -62,6 +62,14 @@ PUSH_CONFIGURED = bool(VAPID_PRIVATE_KEY and VAPID_PUBLIC_KEY)
 EMAIL_CONFIGURED = bool(RESEND_API_KEY)
 
 
+# Set by cronlib before it imports the app. The cron scripts build the whole
+# Flask app once a minute, so without this every warning below is reprinted
+# 1440 times a day into the same log /diagnostics tails 30 lines of — which is
+# how the real "run:" lines stopped being visible. /diagnostics reports this
+# same state in colour, so the log is not the only place it would be missed.
+QUIET_STARTUP = False
+
+
 def startup_warnings() -> list:
     """Human-readable warnings for anything switched off by missing config.
 

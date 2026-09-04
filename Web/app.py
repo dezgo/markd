@@ -28,7 +28,7 @@ from scheduling import parse_hhmm
 # when the app starts and exposed via /version for the client-side staleness
 # check. deploy.sh greps this line to confirm a deploy actually took, so it
 # stays a plain literal in this file.
-APP_VERSION = "v65"
+APP_VERSION = "v66"
 
 
 
@@ -167,11 +167,12 @@ def create_app() -> Flask:
 
     routes.register(app)
 
-    for message in config.startup_warnings():
-        config.warn(message)
-    if not antispam.is_turnstile_enabled():
-        config.warn("Turnstile keys not set — signup CAPTCHA disabled "
-                    "(other defences still active).")
+    if not config.QUIET_STARTUP:
+        for message in config.startup_warnings():
+            config.warn(message)
+        if not antispam.is_turnstile_enabled():
+            config.warn("Turnstile keys not set — signup CAPTCHA disabled "
+                        "(other defences still active).")
 
     return app
 

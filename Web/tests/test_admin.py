@@ -1,5 +1,6 @@
 """The admin usage overview, and who may see it."""
 
+import itertools
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -145,3 +146,120 @@ def test_the_page_does_not_run_a_query_per_user(flask_app, other_user):
 
     selects = [s for s in seen if s.lstrip().upper().startswith("SELECT")]
     assert len(selects) <= 10, f"{len(selects)} queries — looks like an N+1"
+
+
+# ---------------------------------------------------------------------------
+# Scale — the instance has ~1600 accounts, most of them dormant bot signups
+# ---------------------------------------------------------------------------
+
+# Emails must stay unique across every test in the session-scoped database, and
+# a real KDF over hundreds of rows costs more than the whole rest of the suite —
+# nothing here ever logs these accounts in.
+_bulk_seq = itertools.count()
+_UNUSABLE_HASH = "x"
+
+
+def _bulk_users(flask_app, n, verified=False, days_old=90):
+    from database import db
+    from models import User
+    emails = [f"bot{next(_bulk_seq)}@example.invalid" for _ in range(n)]
+    with flask_app.app_context():
+        when = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days_old)
+        db.session.bulk_save_objects([
+            User(email=e, password_hash=_UNUSABLE_HASH,
+                 email_verified=verified, created_at=when) for e in emails])
+        db.session.commit()
+    return emails
+
+
+def test_dormant_unverified_accounts_are_counted_but_not_listed(flask_app, api):
+    """The whole point of the rework: 1267 never-verified rows must not bury
+    the handful of real accounts."""
+    from routes.admin import _gather
+    api.post("/todos", {"title": "a real todo"})
+    bots = _bulk_users(flask_app, 40)
+    with flask_app.app_context():
+        stats = _gather()
+
+    assert stats["user_count"] >= 41
+    assert stats["hidden_unverified"] >= 40
+    listed = {r["email"] for r in stats["rows"]}
+    assert not (set(bots) & listed)
+    assert stats["unverified_count"] >= 40
+
+
+def test_a_recent_signup_is_listed_even_though_unverified(flask_app):
+    """Inside the grace window it is still plausibly a person mid-signup."""
+    from routes.admin import _gather
+    fresh = _bulk_users(flask_app, 3, days_old=1)
+    with flask_app.app_context():
+        listed = {r["email"] for r in _gather()["rows"]}
+    assert set(fresh) <= listed
+
+
+def test_the_account_table_is_capped(flask_app):
+    from routes.admin import ROW_LIMIT, _gather
+    _bulk_users(flask_app, ROW_LIMIT + 25, verified=True)
+    with flask_app.app_context():
+        stats = _gather()
+    assert len(stats["rows"]) == ROW_LIMIT
+    assert stats["hidden_idle"] >= 25
+
+
+def test_totals_count_everyone_not_just_listed_rows(flask_app, api):
+    """A capped table must not produce capped numbers."""
+    from routes.admin import ROW_LIMIT, _gather
+    _bulk_users(flask_app, ROW_LIMIT + 5, verified=True)
+    with flask_app.app_context():
+        stats = _gather()
+    assert stats["user_count"] > len(stats["rows"])
+    assert stats["verified_count"] >= ROW_LIMIT + 5
+
+
+def test_the_signup_timeline_buckets_by_month(flask_app):
+    from routes.admin import _gather
+    _bulk_users(flask_app, 5, days_old=400)
+    _bulk_users(flask_app, 7, days_old=2)
+    with flask_app.app_context():
+        stats = _gather()
+    assert stats["timeline"], "expected at least one month"
+    assert stats["timeline_peak"] >= 5
+    assert stats["timeline"] == sorted(stats["timeline"]), "months must be ordered"
+    assert sum(n for _, n in stats["timeline"]) <= stats["user_count"]
+
+
+def test_the_page_still_renders_at_scale(client, flask_app):
+    from routes.admin import _gather
+    dormant = _bulk_users(flask_app, 300)
+    _login_admin(client)
+    r = client.get("/admin")
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    assert not any(e in body for e in dormant), "dormant signups reached the page"
+    assert "not listed" in body, "the page must account for the rows it hides"
+
+
+def test_query_count_does_not_grow_with_users(flask_app):
+    """The N+1 guard, re-armed against a realistic row count."""
+    from routes.admin import _gather
+    from sqlalchemy import event
+    from database import db
+
+    def _count_queries():
+        seen = []
+        with flask_app.app_context():
+            engine = db.engine
+
+            def _tap(conn, cursor, statement, *a):
+                seen.append(statement)
+
+            event.listen(engine, "before_cursor_execute", _tap)
+            try:
+                _gather()
+            finally:
+                event.remove(engine, "before_cursor_execute", _tap)
+        return len([s for s in seen if s.lstrip().upper().startswith("SELECT")])
+
+    small = _count_queries()
+    _bulk_users(flask_app, 250, verified=True)
+    assert _count_queries() == small, "query count must be independent of user count"

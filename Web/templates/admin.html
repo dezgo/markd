@@ -14,6 +14,8 @@
     .tile { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.7rem 0.8rem; }
     .tile .n { font-size: 1.4rem; font-weight: 700; line-height: 1.1; }
     .tile .l { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; margin-top: 0.15rem; }
+    .tile.alert { border-color: #fca5a5; background: #fef2f2; }
+    .tile.alert .n { color: #dc2626; }
     .scroll { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
     th { text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; color: #6b7280; padding: 0.5rem 0.7rem; background: #f3f4f6; white-space: nowrap; }
@@ -23,6 +25,14 @@
     .warn { color: #b45309; font-weight: 600; }
     .muted { color: #9ca3af; }
     .note { background: #fff; border: 1px solid #e5e7eb; border-left: 3px solid #b45309; border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.85rem; margin-top: 0.8rem; }
+    .note.danger { border-left-color: #dc2626; }
+    .note h3 { font-size: 0.85rem; margin: 0 0 0.35rem; }
+    .bars { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0.8rem; }
+    .bar { display: grid; grid-template-columns: 4.5rem 1fr 3rem; align-items: center; gap: 0.5rem; font-size: 0.78rem; margin-bottom: 0.3rem; }
+    .bar .track { background: #f3f4f6; border-radius: 3px; height: 0.85rem; overflow: hidden; }
+    .bar .fill { background: #6366f1; height: 100%; border-radius: 3px; }
+    .bar .fill.hot { background: #dc2626; }
+    .bar .v { text-align: right; color: #6b7280; font-variant-numeric: tabular-nums; }
     a { color: #6366f1; }
   </style>
 </head>
@@ -36,14 +46,29 @@
 
   <div class="tiles">
     <div class="tile"><div class="n">{{ stats.user_count }}</div><div class="l">Accounts</div></div>
-    <div class="tile"><div class="n">{{ stats.active_count }}</div><div class="l">Active</div></div>
     <div class="tile"><div class="n">{{ stats.verified_count }}</div><div class="l">Verified</div></div>
+    <div class="tile {{ 'alert' if stats.unverified_count > stats.verified_count }}"><div class="n">{{ stats.unverified_count }}</div><div class="l">Unverified</div></div>
+    <div class="tile"><div class="n">{{ stats.active_count }}</div><div class="l">Active</div></div>
     <div class="tile"><div class="n">{{ stats.todo_count }}</div><div class="l">Todos</div></div>
     <div class="tile"><div class="n">{{ stats.subscription_count }}</div><div class="l">Push subs</div></div>
+    <div class="tile {{ 'alert' if stats.signups_24h > 20 }}"><div class="n">{{ stats.signups_24h }}</div><div class="l">Signups 24h</div></div>
     <div class="tile"><div class="n">{{ stats.signups_7d }}</div><div class="l">Signups 7d</div></div>
     <div class="tile"><div class="n">{{ stats.mail_24h }}</div><div class="l">Mail 24h</div></div>
     <div class="tile"><div class="n">{{ stats.suppressed }}</div><div class="l">Suppressed</div></div>
   </div>
+
+  {% if not stats.turnstile_enabled and stats.unverified_count > stats.verified_count %}
+    <div class="note danger">
+      <h3>Signup CAPTCHA is off, and most accounts here never verified</h3>
+      {{ stats.unverified_count }} of {{ stats.user_count }} accounts have never
+      confirmed an address. That is the signature of automated signups. The
+      honeypot, rate limits and MX checks are running, but Turnstile — the layer
+      built for this — is inert until <code>TURNSTILE_SITE_KEY</code> and
+      <code>TURNSTILE_SECRET_KEY</code> are in <code>.env</code>. Check
+      &ldquo;Signups 24h&rdquo; above and the histogram below to tell a live
+      flood from an old one.
+    </div>
+  {% endif %}
 
   {% if stats.orphan_subscriptions %}
     <div class="note">
@@ -54,7 +79,33 @@
     </div>
   {% endif %}
 
+  <h2>Signups per month</h2>
+  <div class="bars">
+    {% for month, n in stats.timeline %}
+      <div class="bar">
+        <span class="muted">{{ month }}</span>
+        <span class="track">
+          <span class="fill {{ 'hot' if n > 50 }}"
+                style="width: {{ (100 * n / stats.timeline_peak) if stats.timeline_peak else 0 }}%"></span>
+        </span>
+        <span class="v">{{ n }}</span>
+      </div>
+    {% else %}
+      <p class="sub" style="margin:0">No signups recorded.</p>
+    {% endfor %}
+  </div>
+
   <h2>Accounts</h2>
+  <p class="sub">
+    Listing accounts that are verified, own a todo, have a push subscription, or
+    signed up in the last {{ stats.grace_days }} days &mdash; most recently used first.
+    {% if stats.hidden_unverified %}
+      {{ stats.hidden_unverified }} dormant unverified account(s) are not listed.
+    {% endif %}
+    {% if stats.hidden_idle %}
+      A further {{ stats.hidden_idle }} exceeded the {{ stats.row_limit }}-row cap.
+    {% endif %}
+  </p>
   <div class="scroll">
     <table>
       <tr>
@@ -74,7 +125,7 @@
           <td class="{{ '' if r.is_active else 'muted' }}">
             {{ r.last_seen.strftime('%Y-%m-%d %H:%M') if r.last_seen else 'never' }}
           </td>
-          <td class="muted">{{ r.created_at.strftime('%Y-%m-%d') }}</td>
+          <td class="muted">{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '—' }}</td>
         </tr>
       {% endfor %}
     </table>

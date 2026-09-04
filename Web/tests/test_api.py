@@ -93,6 +93,18 @@ def test_due_date_can_be_cleared(api):
 # Recurrence through the real request path
 # ---------------------------------------------------------------------------
 
+def _utc_today():
+    """Today in the zone these tests put the user in.
+
+    The built-in reads the machine's local zone. On a UTC+10 developer machine
+    that is a day ahead of the app's UTC view between midnight and 10am, so
+    comparing the two made these tests fail for ten hours a day — the same
+    instant-versus-calendar-date confusion the recurrence code itself had.
+    """
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).date()
+
+
 def test_weekday_recurrence_is_seeded_with_a_start_date(api, set_timezone):
     set_timezone("UTC")
     t = api.post("/todos", {"title": "gym", "recurrence_unit": "weeks",
@@ -102,7 +114,7 @@ def test_weekday_recurrence_is_seeded_with_a_start_date(api, set_timezone):
     assert t["recurrence_interval"] == 1
     seeded = date.fromisoformat(t["due_date"])
     assert (seeded.weekday() + 1) % 7 in {1, 3, 5}
-    assert seeded >= date.today()
+    assert seeded >= _utc_today()
 
 
 def test_interval_recurrence_is_not_given_a_date(api):
@@ -137,14 +149,14 @@ def test_completing_a_recurring_todo_spawns_the_next_one(api, set_timezone):
 def test_the_spawned_todo_is_always_in_the_future(api, set_timezone):
     """A long-overdue recurring task must not respawn into the past."""
     set_timezone("UTC")
-    long_ago = (date.today() - timedelta(days=90)).isoformat()
+    long_ago = (_utc_today() - timedelta(days=90)).isoformat()
     t = api.post("/todos", {"title": "gym", "due_date": long_ago,
                             "recurrence_unit": "weeks",
                             "recurrence_days": MWF}).get_json()
     api.patch(f"/todos/{t['id']}", {"done": True})
     child = [x for x in api.get("/todos").get_json()
              if x["spawned_from_id"] == t["id"]][0]
-    assert date.fromisoformat(child["due_date"]) > date.today()
+    assert date.fromisoformat(child["due_date"]) > _utc_today()
 
 
 def test_un_completing_removes_the_spawned_todo(api, set_timezone):

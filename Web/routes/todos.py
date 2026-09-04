@@ -67,10 +67,22 @@ def _due_from_api(due_date, due_time, tz):
     return None, None
 
 
-def _seed_weekday_start(todo_or_time, days_csv, tz):
-    """First occurrence for a weekday recurrence that was given no start date."""
-    target = first_due_date(scheduling.today_in(tz), days_csv)
-    return scheduling.due_fields(target, todo_or_time, tz)
+def _resolve_due(due_date, due_time, unit, days_csv, tz):
+    """(due_at, due_on) for a payload, with a weekday recurrence snapped onto a
+    day the user actually ticked.
+
+    An explicit date always wins — the user picked it. Otherwise a weekday
+    recurrence has to supply the date, because both alternatives put the todo
+    on a day that was never chosen: with no date it sits undated and invisible,
+    and a bare time resolves to "today or tomorrow", which is a chosen weekday
+    only by luck. That second case is the one that bit — it is what the UI
+    sends for the natural "07:00 on Mon/Wed/Fri" task.
+    """
+    if due_date is None and needs_seed_date(unit, days_csv):
+        base = (scheduling.next_occurrence_of(due_time, tz) if due_time
+                else scheduling.today_in(tz))
+        return scheduling.due_fields(first_due_date(base, days_csv), due_time, tz)
+    return _due_from_api(due_date, due_time, tz)
 
 
 @bp.route("/todos", methods=["GET"])
@@ -99,12 +111,7 @@ def create_todo():
 
     uid = current_user_id()
     tz = _user_tz(uid)
-    due_at, due_on = _due_from_api(due_date, due_time, tz)
-
-    # A weekday recurrence with no start date would sit undated forever: it
-    # never lands in a day group and the notifier skips it.
-    if due_at is None and due_on is None and needs_seed_date(unit, days_csv):
-        due_at, due_on = _seed_weekday_start(due_time, days_csv, tz)
+    due_at, due_on = _resolve_due(due_date, due_time, unit, days_csv, tz)
 
     todo = Todo(
         user_id=uid, title=title, due_at=due_at, due_on=due_on,
@@ -191,13 +198,16 @@ def update_todo(todo_id):
             due_date, due_time = _read_due(data)
         except _BadRequest as e:
             return jsonify({"error": e.message}), 400
-        todo.due_at, todo.due_on = _due_from_api(due_date, due_time, tz)
+        todo.due_at, todo.due_on = _resolve_due(
+            due_date, due_time, todo.recurrence_unit, todo.recurrence_days, tz)
 
-    # Same invariant as create_todo.
+    # Also reachable when the recurrence itself was what changed, so the
+    # block above never ran.
     if todo.due_at is None and todo.due_on is None \
             and needs_seed_date(todo.recurrence_unit, todo.recurrence_days):
-        todo.due_at, todo.due_on = _seed_weekday_start(
-            scheduling.parse_hhmm(data.get("due_time")), todo.recurrence_days, tz)
+        todo.due_at, todo.due_on = _resolve_due(
+            None, scheduling.parse_hhmm(data.get("due_time")),
+            todo.recurrence_unit, todo.recurrence_days, tz)
 
     todo.updated_at = datetime.now(timezone.utc)
     db.session.commit()

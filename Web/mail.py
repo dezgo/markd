@@ -6,6 +6,7 @@ present or future, gets to mail a known-bad address or flood the domain by
 going around it.
 """
 
+import secrets
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -73,12 +74,32 @@ def make_token(user_id: int, purpose: str, hours: int) -> str:
     return token
 
 
-def consume_token(token: str, purpose: str) -> User:
-    """Return the user if the token is valid and unused, else None. Marks it used."""
+def _live_token(token: str, purpose: str):
+    """The token row, if it exists, is unused and has not expired."""
     rec = EmailToken.query.filter_by(token=token, purpose=purpose).first()
     if not rec or rec.used_at is not None:
         return None
     if rec.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
+        return None
+    return rec
+
+
+def peek_token(token: str, purpose: str) -> User:
+    """Return the user without spending the token.
+
+    Anything reachable by GET has to use this. Corporate mail gateways fetch
+    every URL in an inbound message to scan it, so a GET that consumes a token
+    is spent by the scanner before the recipient ever sees the mail — which is
+    how 366 accounts here became "verified" with nobody having clicked.
+    """
+    rec = _live_token(token, purpose)
+    return db.session.get(User, rec.user_id) if rec else None
+
+
+def consume_token(token: str, purpose: str) -> User:
+    """Return the user if the token is valid and unused, else None. Marks it used."""
+    rec = _live_token(token, purpose)
+    if not rec:
         return None
     rec.used_at = datetime.now(timezone.utc)
     user = db.session.get(User, rec.user_id)

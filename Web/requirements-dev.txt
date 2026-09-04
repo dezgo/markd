@@ -2,3 +2,4 @@
 # requirements.txt alone.
 -r requirements.txt
 pytest>=7.4
+pyflakes

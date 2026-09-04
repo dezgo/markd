@@ -28,7 +28,7 @@ from scheduling import parse_hhmm
 # when the app starts and exposed via /version for the client-side staleness
 # check. deploy.sh greps this line to confirm a deploy actually took, so it
 # stays a plain literal in this file.
-APP_VERSION = "v66"
+APP_VERSION = "v67"
 
 
 

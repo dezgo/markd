@@ -182,13 +182,17 @@ on an unverified account deletes it. Unsigned or replayed calls get a 401.
 
 ### 4. Daily cleanup cron
 
-```bash
-sudo crontab -e -u derek
-0 4 * * * /var/www/markd/Web/.venv/bin/python /var/www/markd/Web/purge_stale_signups.py >> /var/log/markd/purge.log 2>&1
-```
+Installed automatically by `setup.sh` — nothing to do here.
 
-Deletes accounts left unverified for `PURGE_UNVERIFIED_DAYS` (default 7), plus
-expired tokens and old rate-limit rows. Check what it would do first:
+It deletes accounts left unverified for `PURGE_UNVERIFIED_DAYS` (default 7),
+plus expired tokens and old rate-limit rows, at 04:00 daily. A run that would
+remove 50 or more accounts copies the database into `backups/` first.
+
+This step used to say "run `crontab -e` and paste this line". It was never
+done, so nothing ever cleaned up, and the June-July 2026 signup flood was still
+sitting in the database in September. If a job matters, `setup.sh` installs it.
+
+Check what it would do without deleting anything:
 
 ```bash
 /var/www/markd/Web/.venv/bin/python /var/www/markd/Web/purge_stale_signups.py --dry-run
@@ -208,6 +212,16 @@ sqlite3 /var/www/markd/Web/markd.db \
 If that shows the spike, the cron above clears it on its next run — or force it
 immediately with `PURGE_UNVERIFIED_DAYS=1`. Also add a Suppression list entry in
 Resend for anything that already hard-bounced, so a retry can't re-send.
+
+That leaves the accounts a mail security scanner marked verified by fetching the
+old GET-based `/verify/<token>` link — real addresses, no person behind them.
+They survive the query above because `email_verified=1`. Clear them with the
+one-off, which keeps anything that owns a todo or a push subscription:
+
+```bash
+/var/www/markd/Web/.venv/bin/python /var/www/markd/Web/purge_dormant.py           # report
+/var/www/markd/Web/.venv/bin/python /var/www/markd/Web/purge_dormant.py --apply   # delete
+```
 
 ### 6. Nginx rate limiting
 

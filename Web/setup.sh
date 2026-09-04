@@ -168,8 +168,13 @@ fi
 # so it works regardless of cron's working directory.
 CRON_DUE="* * * * * cd $APP_DIR && $APP_DIR/.venv/bin/python3 $APP_DIR/send_notifications.py >> $LOG_DIR/notifications.log 2>&1"
 CRON_OVERDUE="* * * * * cd $APP_DIR && $APP_DIR/.venv/bin/python3 $APP_DIR/send_overdue_check.py >> $LOG_DIR/overdue.log 2>&1"
+# Daily hygiene: unverified signups past their window, expired tokens, old rate
+# rows. This was documented in deploy/README.md as a manual crontab -e step and
+# was never actually added, so 1267 bot accounts from the June-July flood were
+# still in the database two months later. Installed here so it cannot be missed.
+CRON_PURGE="0 4 * * * cd $APP_DIR && $APP_DIR/.venv/bin/python3 $APP_DIR/purge_stale_signups.py >> $LOG_DIR/purge.log 2>&1"
 # Always rewrite to pick up cron command changes between deploys
-(crontab -l 2>/dev/null | grep -vF "send_notifications.py" | grep -vF "send_overdue_check.py"; echo "$CRON_DUE"; echo "$CRON_OVERDUE") | crontab -
+(crontab -l 2>/dev/null | grep -vF "send_notifications.py" | grep -vF "send_overdue_check.py" | grep -vF "purge_stale_signups.py"; echo "$CRON_DUE"; echo "$CRON_OVERDUE"; echo "$CRON_PURGE") | crontab -
 echo "==> Cron jobs installed"
 
 # ── Sudoers ───────────────────────────────────────────────────────────────────

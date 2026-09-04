@@ -7,25 +7,40 @@ are a live liability: every one is an address that can be targeted through
 unverified after PURGE_UNVERIFIED_DAYS is junk — a real user who wanted the
 account would have clicked the link, or used "send it again".
 
-Run daily:
-    0 4 * * * /var/www/markd/Web/.venv/bin/python /var/www/markd/Web/purge_stale_signups.py
+Installed as a daily cron by setup.sh. It was documented as a manual step and
+never actually added, which is the whole reason 1267 flood accounts from June
+and July were still sitting in the database in September.
 
 Pass --dry-run to see what would go without deleting anything.
+
+This handles unverified rows on a rolling window. It deliberately never touches
+a verified account, however idle: a real person who verifies and then ignores
+the app for a month must not be deleted by a nightly job. The one-off cleanup of
+accounts that were verified by a mail scanner rather than a person lives in
+purge_dormant.py.
 """
-import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-from dotenv import load_dotenv
+import config
 
-load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+# Importing config is what loads .env — it derives the path from its own
+# __file__, so this works whatever directory cron runs it from. Setting this
+# before importing app keeps four static config warnings out of a log that
+# exists to show what was deleted.
+config.QUIET_STARTUP = True
 
-from app import app
-from database import db
-from accounts import delete_user
-from models import EmailToken, RateEvent, User
+from accounts import delete_user  # noqa: E402
+from app import app  # noqa: E402
+from database import db  # noqa: E402
+from dbbackup import backup  # noqa: E402
+from models import EmailToken, RateEvent, User  # noqa: E402
 
-PURGE_UNVERIFIED_DAYS = int(os.environ.get("PURGE_UNVERIFIED_DAYS", "7"))
+PURGE_UNVERIFIED_DAYS = config.PURGE_UNVERIFIED_DAYS
+
+# A normal night removes a handful. Anything past this is a backlog being
+# cleared for the first time, and is worth a copy of the database first.
+BACKUP_THRESHOLD = 50
 
 DRY_RUN = "--dry-run" in sys.argv
 
@@ -44,9 +59,26 @@ def purge_unverified(cutoff):
         log("no stale unverified accounts")
         return 0
 
+    if len(stale) >= BACKUP_THRESHOLD and not DRY_RUN:
+        path = backup(app.config["SQLALCHEMY_DATABASE_URI"], "prepurge")
+        log(f"{len(stale)} accounts to remove — backed up to {path or 'nowhere (not sqlite)'}")
+
+    # One line per account would be thousands on the first run. Log the shape
+    # instead, and the individual addresses only when there are few enough to
+    # be worth reading.
+    if len(stale) <= 20:
+        for user in stale:
+            log(f"{'would delete' if DRY_RUN else 'deleting'} unverified "
+                f"{user.email} (created {user.created_at:%Y-%m-%d})")
+    else:
+        by_month = {}
+        for user in stale:
+            key = user.created_at.strftime("%Y-%m") if user.created_at else "unknown"
+            by_month[key] = by_month.get(key, 0) + 1
+        for month in sorted(by_month):
+            log(f"  {month}: {by_month[month]}")
+
     for user in stale:
-        log(f"{'would delete' if DRY_RUN else 'deleting'} unverified {user.email} "
-            f"(created {user.created_at:%Y-%m-%d})")
         if DRY_RUN:
             continue
         # There are no cascade rules on these relationships, so dependents are

@@ -54,6 +54,10 @@ RESEND_WEBHOOK_SECRET = os.environ.get("RESEND_WEBHOOK_SECRET", "")
 INITIAL_ADMIN_EMAIL = os.environ.get("INITIAL_ADMIN_EMAIL", "").strip().lower()
 INITIAL_ADMIN_PASSWORD = os.environ.get("UI_PASSWORD", "")
 
+# --- Maintenance. A signup left unverified this long was never a person; the
+# --- daily purge deletes it. See purge_stale_signups.py.
+PURGE_UNVERIFIED_DAYS = int(os.environ.get("PURGE_UNVERIFIED_DAYS", "7"))
+
 # --- Misc
 NOTIFICATIONS_LOG = os.environ.get("NOTIFICATIONS_LOG", "/var/log/markd/notifications.log")
 THEMES = {"indigo", "mint", "sunset", "berry", "slate"}

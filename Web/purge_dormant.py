@@ -13,6 +13,11 @@ row was made, which is why it is safe: any account someone actually used fails
 it. Deletion goes through accounts.delete_user, the same cascade the account
 settings page uses, so no dependent rows are orphaned.
 
+This is a one-off. Ongoing hygiene — unverified accounts on a rolling window,
+expired tokens, old rate-limit rows — is purge_stale_signups.py, which setup.sh
+installs as a daily cron. Run that one first: it removes every unverified row,
+which is most of this, and what is left here is the scanner-verified remainder.
+
 Dry run unless --apply is passed. --apply takes a backup first.
 
     python3 purge_dormant.py                     # report only
@@ -21,9 +26,6 @@ Dry run unless --apply is passed. --apply takes a backup first.
 """
 
 import argparse
-import os
-import shutil
-import sqlite3
 import sys
 from collections import Counter
 from datetime import datetime
@@ -36,40 +38,12 @@ config.QUIET_STARTUP = True
 
 from accounts import ADMIN_USER_ID, delete_user  # noqa: E402
 from app import app  # noqa: E402
+from dbbackup import backup  # noqa: E402
 from database import db
 from models import PushSubscription, Todo, User
 
 DEFAULT_CUTOFF = "2026-08-01"
 BATCH = 200
-
-
-def _backup(url):
-    """Timestamped copy beside the database, mirroring deploy.sh."""
-    if not url.startswith("sqlite:///"):
-        print(f"!! {url} is not sqlite — back it up yourself before --apply.")
-        sys.exit(1)
-    path = url[len("sqlite:///"):]
-    if not os.path.exists(path):
-        print(f"!! no database at {path}")
-        sys.exit(1)
-
-    folder = os.path.join(os.path.dirname(path) or ".", "backups")
-    os.makedirs(folder, exist_ok=True)
-    dest = os.path.join(
-        folder, f"markd-prepurge-{datetime.now().strftime('%Y%m%d-%H%M%S')}.db")
-
-    # .backup is safe against a live writer; copy is the fallback.
-    try:
-        src = sqlite3.connect(path)
-        dst = sqlite3.connect(dest)
-        with dst:
-            src.backup(dst)
-        src.close()
-        dst.close()
-    except sqlite3.Error:
-        shutil.copy2(path, dest)
-    print(f"    backup: {dest} ({os.path.getsize(dest):,} bytes)")
-    return dest
 
 
 def dormant(cutoff):
@@ -129,7 +103,11 @@ def main():
             return
 
         print()
-        _backup(app.config["SQLALCHEMY_DATABASE_URI"])
+        path = backup(app.config["SQLALCHEMY_DATABASE_URI"], "predormant")
+        if not path:
+            print("  !! not a local sqlite database — back it up yourself first.")
+            sys.exit(1)
+        print(f"    backup: {path}")
 
         done = 0
         for user in victims:

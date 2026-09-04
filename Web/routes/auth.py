@@ -12,7 +12,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import antispam
 from database import db
-from mail import consume_token, send_reset_email, send_verification_email
+from mail import consume_token, peek_token, send_reset_email, send_verification_email
 from models import EmailToken, User
 
 bp = Blueprint("auth", __name__)
@@ -118,13 +118,33 @@ def resend_verification():
     return render_template("verify_pending.html", email=email, resent=True)
 
 
-@bp.route("/verify/<token>")
+def _bad_verify_link():
+    return render_template("auth_message.html", title="Link invalid",
+                           message="This verification link is invalid or has expired.",
+                           link_text="Sign up again", link_href=url_for("auth.signup"))
+
+
+@bp.route("/verify/<token>", methods=["GET"])
+def verify_email_confirm(token):
+    """Show a button. Deliberately does not verify anything.
+
+    This used to be a GET that flipped email_verified, which meant every mail
+    security gateway that scans links verified the account for its recipient.
+    A human click is a POST; a scanner's fetch is not.
+    """
+    user = peek_token(token, "verify")
+    if not user:
+        return _bad_verify_link()
+    if user.email_verified:
+        return redirect(url_for("auth.login"))
+    return render_template("verify_confirm.html", token=token, email=user.email)
+
+
+@bp.route("/verify/<token>", methods=["POST"])
 def verify_email(token):
     user = consume_token(token, "verify")
     if not user:
-        return render_template("auth_message.html", title="Link invalid",
-                               message="This verification link is invalid or has expired.",
-                               link_text="Sign up again", link_href=url_for("auth.signup"))
+        return _bad_verify_link()
     user.email_verified = True
     db.session.commit()
     flash("Email verified. You can now log in.")
@@ -187,9 +207,7 @@ def forgot_password():
 
 @bp.route("/reset-password/<token>", methods=["GET", "POST"])
 def reset_password(token):
-    rec = EmailToken.query.filter_by(token=token, purpose="reset").first()
-    valid = rec and rec.used_at is None and rec.expires_at.replace(tzinfo=timezone.utc) >= datetime.now(timezone.utc)
-    if not valid:
+    if not peek_token(token, "reset"):
         return render_template("auth_message.html", title="Link invalid",
                                message="This reset link is invalid or has expired.",
                                link_text="Request a new one", link_href=url_for("auth.forgot_password"))

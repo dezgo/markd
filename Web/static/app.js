@@ -504,6 +504,17 @@ function dismissToastEl(toastEl) {
 
 let pendingToggle = null;
 
+// A fresh list from the server doesn't know about a tick or delete still
+// sitting in its undo window — re-apply them so those rows don't pop back.
+function withPendingApplied(all) {
+  if (pendingToggle) {
+    const i = all.findIndex(t => t.id === pendingToggle.todo.id);
+    if (i !== -1) all[i] = { ...all[i], done: true };
+  }
+  if (pendingDelete) all = all.filter(t => t.id !== pendingDelete.todo.id);
+  return all;
+}
+
 function commitToggle() {
   if (!pendingToggle) return;
   const { todo, timeoutId, toastEl } = pendingToggle;
@@ -517,7 +528,7 @@ function commitToggle() {
     const idx = todos.findIndex(t => t.id === todo.id);
     if (idx !== -1) todos[idx] = updated;
     if (updated.recurrence_interval) {
-      return api('/todos').then(all => { todos = all; });
+      return api('/todos').then(all => { todos = withPendingApplied(all); });
     }
   }).then(() => render()).catch(() => {});
 }
@@ -530,7 +541,7 @@ function toggleDone(todo) {
       method: 'PATCH',
       body: JSON.stringify({ done: false }),
     }).then(updated => {
-      return api('/todos').then(all => { todos = all; });
+      return api('/todos').then(all => { todos = withPendingApplied(all); });
     }).then(() => render());
     return;
   }

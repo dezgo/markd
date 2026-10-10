@@ -15,6 +15,7 @@ const addForm = document.getElementById('add-form');
 const newTitle = document.getElementById('new-title');
 const newDue = document.getElementById('new-due');
 const newDueTime = document.getElementById('new-due-time');
+const newDueWrap = document.getElementById('new-due-wrap');
 const newNotes = document.getElementById('new-notes');
 const newRecurInterval = document.getElementById('new-recur-interval');
 const newRecurUnit = document.getElementById('new-recur-unit');
@@ -111,6 +112,10 @@ function syncRecurControls() {
   const hasDays = getSelectedDays(newDayToggles).length > 0;
   const takesInterval = UNITS_WITH_INTERVAL.has(unit) && !(isWeekly && hasDays);
 
+  // "Last day of month" already says which day, so a date picker is only a
+  // way to contradict it. The value stays (see dueDateForPayload) so editing
+  // next month's instance doesn't pull it back to this month.
+  newDueWrap.hidden = unit === 'monthly-lastday';
   newDayTogglesWrap.hidden = !isWeekly;
   monthlyWeekdayWrap.hidden = !isMonthlyWeekday;
   const intervalInput = recurIntervalRow.querySelector('#new-recur-interval');
@@ -605,6 +610,16 @@ function remove(todo) {
 // Form submit — add or edit
 // ---------------------------------------------------------------------------
 
+// The form's date, except that "last day of month" snaps it to the end of its
+// month: the field is hidden then, so whatever it holds was never chosen as
+// a day. Empty stays empty and the server seeds this month's end.
+function dueDateForPayload() {
+  if (!newDue.value || newRecurUnit.value !== 'monthly-lastday') return newDue.value;
+  const [y, m] = newDue.value.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return `${y}-${String(m).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+}
+
 function buildPayload({ forUpdate }) {
   const payload = { title: newTitle.value.trim() };
 
@@ -619,14 +634,15 @@ function buildPayload({ forUpdate }) {
     }
   } else {
     // Schedule mode — read whatever's filled in
-    if (newDue.value && newDueTime.value) {
-      const [y, m, d] = newDue.value.split('-').map(Number);
+    const dueDate = dueDateForPayload();
+    if (dueDate && newDueTime.value) {
+      const [y, m, d] = dueDate.split('-').map(Number);
       const [h, min] = newDueTime.value.split(':').map(Number);
       const local = new Date(y, m - 1, d, h, min);
       payload.due_date = local.toISOString().slice(0, 10);
       payload.due_time = local.toISOString().slice(11, 16);
-    } else if (newDue.value) {
-      payload.due_date = newDue.value;
+    } else if (dueDate) {
+      payload.due_date = dueDate;
       if (forUpdate) payload.due_time = null;
     } else if (newDueTime.value) {
       payload.due_time = newDueTime.value;

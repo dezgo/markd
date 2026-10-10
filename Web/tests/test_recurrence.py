@@ -13,6 +13,7 @@ from recurrence import (
     first_due_date,
     js_weekday,
     needs_seed_date,
+    seed_due_date,
     next_due_date,
     parse_recurrence,
     py_weekday,
@@ -279,7 +280,34 @@ def test_non_numeric_days_are_rejected():
     ("weeks", None, False),     # plain "every N weeks" keeps whatever date it has
     ("days", None, False),
     ("monthly-last", "1", False),
+    ("monthly-lastday", None, True),
     (None, None, False),
 ])
 def test_needs_seed_date(unit, days, expected):
     assert needs_seed_date(unit, days) is expected
+
+
+# ---------------------------------------------------------------------------
+# Last day of the month
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("base,expected", [
+    (date(2026, 10, 10), date(2026, 10, 31)),   # mid-month -> this month's end
+    (date(2026, 10, 31), date(2026, 11, 30)),   # on the day -> next month's
+    (date(2026, 11, 30), date(2026, 12, 31)),   # doesn't stick on the 30th
+    (date(2026, 12, 31), date(2027, 1, 31)),    # over the year
+    (date(2027, 1, 31), date(2027, 2, 28)),
+    (date(2028, 1, 31), date(2028, 2, 29)),     # leap year
+    (date(2028, 2, 29), date(2028, 3, 31)),
+])
+def test_last_day_of_month(base, expected):
+    assert next_due_date(base, None, "monthly-lastday") == expected
+
+
+def test_last_day_of_month_seeds_to_this_months_end_inclusive():
+    assert seed_due_date(date(2026, 10, 10), "monthly-lastday", None) == date(2026, 10, 31)
+    assert seed_due_date(date(2026, 10, 31), "monthly-lastday", None) == date(2026, 10, 31)
+
+
+def test_last_day_of_month_parses_without_interval_or_days():
+    assert parse_recurrence({"recurrence_unit": "monthly-lastday"}) ==         (None, "monthly-lastday", None, None)

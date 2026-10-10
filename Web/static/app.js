@@ -62,6 +62,7 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function formatRecurrence(todo) {
   const unit = todo.recurrence_unit;
   if (!unit) return null;
+  if (unit === 'monthly-lastday') return '↻ last day of month';
   if (unit === 'monthly-last' || unit === 'monthly-2last') {
     const day = DAY_LABELS[+((todo.recurrence_days || '0').split(',')[0])];
     const which = unit === 'monthly-last' ? 'last' : '2nd-last';
@@ -96,8 +97,8 @@ function wireDayToggles(container) {
 }
 wireDayToggles(newDayToggles);
 
-// Units that pair with an "every N" count. '' (never) and the two monthly
-// weekday rules carry their own control instead.
+// Units that pair with an "every N" count. '' (never) and the monthly rules
+// carry their own control, or need none.
 const UNITS_WITH_INTERVAL = new Set(['days', 'weeks', 'months', 'years']);
 
 function syncRecurControls() {
@@ -636,7 +637,13 @@ function buildPayload({ forUpdate }) {
     }
 
     const unit = newRecurUnit.value;
-    if (unit === 'monthly-last' || unit === 'monthly-2last') {
+    if (unit === 'monthly-lastday') {
+      payload.recurrence_unit = unit;
+      if (forUpdate) {
+        payload.recurrence_interval = null;
+        payload.recurrence_days = null;
+      }
+    } else if (unit === 'monthly-last' || unit === 'monthly-2last') {
       payload.recurrence_unit = unit;
       payload.recurrence_days = monthlyWeekdaySelect.value;
       if (forUpdate) payload.recurrence_interval = null;

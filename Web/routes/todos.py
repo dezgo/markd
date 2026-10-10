@@ -14,7 +14,7 @@ import scheduling
 from accounts import current_user_id, require_api_key
 from database import db
 from models import Todo, UserSettings
-from recurrence import first_due_date, needs_seed_date, next_due_date, \
+from recurrence import needs_seed_date, seed_due_date, next_due_date, \
     parse_recurrence, valid_time
 
 bp = Blueprint("todos", __name__)
@@ -81,7 +81,7 @@ def _resolve_due(due_date, due_time, unit, days_csv, tz):
     if due_date is None and needs_seed_date(unit, days_csv):
         base = (scheduling.next_occurrence_of(due_time, tz) if due_time
                 else scheduling.today_in(tz))
-        return scheduling.due_fields(first_due_date(base, days_csv), due_time, tz)
+        return scheduling.due_fields(seed_due_date(base, unit, days_csv), due_time, tz)
     return _due_from_api(due_date, due_time, tz)
 
 
@@ -170,9 +170,11 @@ def update_todo(todo_id):
 
     if "done" in data:
         new_done = bool(data["done"])
-        if new_done and not todo.done and todo.recurrence_interval and todo.recurrence_unit:
+        # Gate on the unit alone: the monthly rules carry no interval, and
+        # gating on one meant ticking them off never produced a next instance.
+        if new_done and not todo.done and todo.recurrence_unit:
             db.session.add(_spawn_next(todo, tz))
-        elif not new_done and todo.done and todo.recurrence_interval:
+        elif not new_done and todo.done and todo.recurrence_unit:
             child = Todo.query.filter_by(spawned_from_id=todo.id, done=False,
                                          user_id=current_user_id()).first()
             if child:

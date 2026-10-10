@@ -146,6 +146,40 @@ def test_completing_a_recurring_todo_spawns_the_next_one(api, set_timezone):
     assert (date.fromisoformat(child["due_date"]).weekday() + 1) % 7 in {1, 3, 5}
 
 
+def test_last_day_of_month_is_dated_and_repeats_on_month_end(api, set_timezone):
+    import calendar
+    set_timezone("UTC")
+    t = api.post("/todos", {"title": "invoices",
+                            "recurrence_unit": "monthly-lastday"}).get_json()
+    assert t["recurrence_unit"] == "monthly-lastday"
+    due = date.fromisoformat(t["due_date"])
+    today = _utc_today()
+    assert due == date(today.year, today.month,
+                       calendar.monthrange(today.year, today.month)[1])
+
+    api.patch(f"/todos/{t['id']}", {"done": True})
+    child = [x for x in api.get("/todos").get_json()
+             if x["spawned_from_id"] == t["id"]][0]
+    nxt = date.fromisoformat(child["due_date"])
+    assert nxt > due
+    assert nxt.day == calendar.monthrange(nxt.year, nxt.month)[1]
+
+
+def test_last_weekday_of_month_repeats_when_completed(api, set_timezone):
+    """The monthly rules carry no interval, and completion used to require one,
+    so "last Friday of the month" never came back after being ticked off."""
+    set_timezone("UTC")
+    t = api.post("/todos", {"title": "rent", "due_date": "2026-10-30",
+                            "recurrence_unit": "monthly-last",
+                            "recurrence_days": "5"}).get_json()
+    api.patch(f"/todos/{t['id']}", {"done": True})
+    children = [x for x in api.get("/todos").get_json()
+                if x["spawned_from_id"] == t["id"]]
+    assert len(children) == 1
+    child = date.fromisoformat(children[0]["due_date"])
+    assert child.weekday() == 4 and (child + timedelta(days=7)).month != child.month
+
+
 def test_the_spawned_todo_is_always_in_the_future(api, set_timezone):
     """A long-overdue recurring task must not respawn into the past."""
     set_timezone("UTC")

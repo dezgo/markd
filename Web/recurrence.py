@@ -17,13 +17,19 @@ from datetime import date, timedelta
 
 from dateutil.relativedelta import relativedelta
 
-RECURRENCE_UNITS = {"days", "weeks", "months", "years", "monthly-last", "monthly-2last"}
+RECURRENCE_UNITS = {"days", "weeks", "months", "years", "monthly-last", "monthly-2last",
+                    "monthly-lastday"}
 
 # The units that pair with an "every N" count. The rest carry their own rule.
 INTERVAL_UNITS = {"days", "weeks", "months", "years"}
 
 # Units that mean "the nth-last <weekday> of the month".
 MONTHLY_WEEKDAY_UNITS = {"monthly-last", "monthly-2last"}
+
+# "The last day of the month" — 31 Jan, 28/29 Feb, 31 Mar... An "every 1
+# month" repeat can't express this: starting on the 31st it clamps to 30 Nov
+# and then stays on the 30th forever.
+LAST_DAY_UNIT = "monthly-lastday"
 
 
 def js_weekday(d: date) -> int:
@@ -50,6 +56,10 @@ def _nth_last_weekday_of_month(year: int, month: int, weekday_py: int, n: int) -
     return d - timedelta(days=7 * (n - 1))
 
 
+def _last_day_of_month(year: int, month: int) -> date:
+    return date(year, month, calendar.monthrange(year, month)[1])
+
+
 def first_due_date(base: date, days_csv: str) -> date:
     """First date on or after `base` falling on one of the CSV weekdays.
 
@@ -65,8 +75,22 @@ def first_due_date(base: date, days_csv: str) -> date:
     return base
 
 
+def seed_due_date(base: date, unit: str, days_csv: str) -> date:
+    """First occurrence on or after `base` for a recurrence that needs seeding."""
+    if unit == LAST_DAY_UNIT:
+        return _last_day_of_month(base.year, base.month)
+    return first_due_date(base, days_csv)
+
+
 def next_due_date(base: date, interval: int, unit: str, days_csv: str = None) -> date:
     """The occurrence strictly after `base`."""
+    if unit == LAST_DAY_UNIT:
+        candidate = _last_day_of_month(base.year, base.month)
+        if candidate <= base:
+            y, m = (base.year + 1, 1) if base.month == 12 else (base.year, base.month + 1)
+            candidate = _last_day_of_month(y, m)
+        return candidate
+
     if unit in MONTHLY_WEEKDAY_UNITS and days_csv:
         target = py_weekday(int(days_csv.split(",")[0]))
         n = 1 if unit == "monthly-last" else 2
@@ -122,6 +146,9 @@ def parse_recurrence(data: dict):
     if interval is None and unit is None and not days:
         return None, None, None, None
 
+    if unit == LAST_DAY_UNIT:
+        return None, unit, None, None
+
     if unit in MONTHLY_WEEKDAY_UNITS:
         if not days:
             return None, None, None, f"recurrence_days (single weekday) is required for {unit}"
@@ -162,4 +189,4 @@ def parse_recurrence(data: dict):
 
 def needs_seed_date(unit: str, days_csv: str) -> bool:
     """True when this recurrence is one that must be given a start date."""
-    return unit == "weeks" and bool(days_csv)
+    return (unit == "weeks" and bool(days_csv)) or unit == LAST_DAY_UNIT

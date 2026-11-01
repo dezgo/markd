@@ -47,6 +47,22 @@ def build_payload(title: str, titles, tag: str) -> str:
     return json.dumps({"title": title, "body": bundle_body(titles), "tag": tag})
 
 
+def due_payload(todos, now_utc) -> str:
+    """The push for tasks reaching their due time this minute.
+
+    A lone task is named in the title; the body says why it is pinging,
+    rather than repeating the name.
+    """
+    if len(todos) == 1:
+        t = todos[0]
+        return json.dumps({"title": t.title, "body": "Due now", "tag": f"todo-{t.id}"})
+    return build_payload(
+        f"{len(todos)} tasks due now",
+        [t.title for t in todos],
+        tag=f"todo-batch-{now_utc.strftime('%Y%m%d%H%M')}",
+    )
+
+
 def send_to_user(user_id: int, payload: str, tag_for_log: str = "",
                  ttl: int = DEFAULT_TTL, urgency: str = "normal", log=_default_log):
     """Deliver one payload to every live subscription a user has.

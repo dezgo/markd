@@ -15,18 +15,8 @@ from app import app
 from database import db
 from models import PushSubscription, Todo
 import scheduling
-from push import build_payload, send_to_user
-
-
-def payload_for(todos, now_utc):
-    if len(todos) == 1:
-        t = todos[0]
-        return build_payload(t.title, [t.title], tag=f"todo-{t.id}")
-    return build_payload(
-        f"{len(todos)} tasks due now",
-        [t.title for t in todos],
-        tag=f"todo-batch-{now_utc.strftime('%Y%m%d%H%M')}",
-    )
+from overdue import users_with_nag_due_now
+from push import due_payload, send_to_user
 
 
 def run():
@@ -55,13 +45,22 @@ def run():
         if not to_notify:
             return
 
+        # A user whose overdue nag fires this minute gets these tasks inside
+        # it instead (overdue.py). Left unmarked, so if the nag does not take
+        # them they go out on their own next minute.
+        held = users_with_nag_due_now(now_utc)
+
         by_user = defaultdict(list)
         for todo in to_notify:
+            if todo.user_id in held:
+                continue
             by_user[todo.user_id].append(todo)
+        for user_id in held & {t.user_id for t in to_notify}:
+            log(f"  user {user_id}: held for this minute's overdue nag")
 
         for user_id, todos in by_user.items():
             delivered, total = send_to_user(
-                user_id, payload_for(todos, now_utc),
+                user_id, due_payload(todos, now_utc),
                 # A task due at a chosen time is allowed to wake the device.
                 urgency="high", log=log,
             )

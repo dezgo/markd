@@ -236,7 +236,7 @@ function renderTodoItem(todo) {
 
   const showNotes = todo.notes || !todo.done;
   const notesHtml = showNotes
-    ? `<div class="todo-notes${todo.notes ? '' : ' is-empty'}">${todo.notes ? escHtml(todo.notes) : 'Add note…'}</div>`
+    ? `<div class="todo-notes${todo.notes ? '' : ' is-empty'}">${todo.notes ? linkify(todo.notes) : 'Add note…'}</div>`
     : '';
 
   const editHint = todo.done ? '' : `
@@ -253,7 +253,7 @@ function renderTodoItem(todo) {
       <span class="todo-check-inner"></span>
     </button>
     <div class="todo-body" title="${todo.done ? '' : 'Tap to edit'}">
-      <div class="todo-title">${escHtml(todo.title)}${editHint}</div>
+      <div class="todo-title">${linkify(todo.title)}${editHint}</div>
       ${notesHtml}
       <div class="todo-meta">${dueHtml}${recurHtml}</div>
     </div>
@@ -262,6 +262,8 @@ function renderTodoItem(todo) {
 
   li.querySelector('.todo-check').addEventListener('click', () => toggleDone(todo));
   li.querySelector('.todo-delete').addEventListener('click', () => remove(todo));
+  // A tapped link opens the page — it must not also open the edit form.
+  li.querySelectorAll('.todo-link').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
   if (!todo.done) {
     li.querySelector('.todo-body').addEventListener('click', () => openForm({ todo }));
   }
@@ -366,6 +368,36 @@ function render() {
 
 function escHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Escape text and turn web addresses (http(s)://… or www.…) into links.
+// Trailing punctuation and an unbalanced closing bracket stay outside the link,
+// so "see https://x.com/a." links to https://x.com/a.
+const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+function linkify(s) {
+  let out = '';
+  let last = 0;
+  for (const m of s.matchAll(URL_RE)) {
+    let url = m[0];
+    let tail = '';
+    while (url.length) {
+      const c = url[url.length - 1];
+      const unbalancedParen = c === ')' && (url.match(/\(/g) || []).length < (url.match(/\)/g) || []).length;
+      if (!'.,;:!?]}'.includes(c) && !unbalancedParen) break;
+      tail = c + tail;
+      url = url.slice(0, -1);
+    }
+    out += escHtml(s.slice(last, m.index));
+    if (url.length > 4) {
+      const href = /^www\./i.test(url) ? 'https://' + url : url;
+      out += `<a class="todo-link" href="${escHtml(href).replace(/"/g, '&quot;')}" target="_blank" rel="noopener noreferrer">${escHtml(url)}</a>`;
+    } else {
+      out += escHtml(url);
+    }
+    out += escHtml(tail);
+    last = m.index + m[0].length;
+  }
+  return out + escHtml(s.slice(last));
 }
 
 // ---------------------------------------------------------------------------

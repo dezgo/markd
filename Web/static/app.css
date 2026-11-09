@@ -879,6 +879,7 @@ body.form-open .fab { display: none; }
 }
 
 .todo-notes.is-empty { color: var(--border); font-style: italic; }
+.todo-link { color: var(--accent); text-decoration: underline; cursor: pointer; overflow-wrap: anywhere; }
 .todo-item.is-done .todo-notes { cursor: default; }
 
 .todo-notes-input {

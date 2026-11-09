@@ -25,16 +25,15 @@ Recent:
 - v71–v73: "last day of month" repeat; monthly repeats now actually come back after being ticked
 - Signup defences (Turnstile, honeypot, rate limits in the app), bot-account cleanup, nightly purge
   of unverified signups, emailed links that don't act on a plain GET (mail scanners)
+- 2026-11-09: nginx rate limit on signup/login/forgot-password/resend-verification applied on the
+  live server (10 a minute per address, burst 5). The live file is Certbot-managed, so it's a hand
+  merge of `Web/deploy/nginx-markd.conf`, not a copy. Backup of the old file:
+  `/etc/nginx/sites-available/markd.bak-20261109`.
 
 Deploy runbook: `Web/deploy/README.md`.
 
 ## To Do
 
-- [ ] **Nginx rate limit on login/signup isn't applied on the server.** The repo's
-  `Web/deploy/nginx-markd.conf` has it, but the live `/etc/nginx/sites-enabled/markd` has no
-  `limit_req` (Certbot owns that file, so it needs a hand merge + `nginx -t` + reload). The app's own
-  signup limits still work; login has no brute-force limit besides this. ⚠️ do-personal also runs
-  Tina, so do the reload at a quiet time.
 - [ ] Done tasks can't be duplicated. Done rows aren't tappable, so there's no way to redo a finished
   task from it. Needs a visible way in, not a hidden tap target.
 - [ ] `deploy.sh`'s "only deploy from main" guard has never been tested end to end on prod.
